@@ -1,0 +1,372 @@
+# USER STORIES - GOOD DRIVER INCENTIVE PROGRAM
+# Total Count Target: 350+ granular stories
+
+# --- EPIC: AUTHENTICATION & ACCESS (Stories 1-30) ---
+1. As a user, I want to see a landing page so I understand what the app is.
+2. As a user, I want to click a "Get Started" button to navigate to the login page.
+3. As a user, I want to log in with a username and password.
+4. As a user, I want to see an error message if my credentials are wrong.
+5. As a user, I want to toggle between "Login" and "Sign Up" modes.
+6. As a potential driver, I want to register for a new account.
+7. As a potential sponsor, I want to register for a new account.
+8. As a potential admin, I want to register for a new account.
+9. As a user registering, I want to enter my full name.
+10. As a user registering, I want to enter a unique username.
+11. As a user registering, I want to create a password.
+12. As a user registering, I want to select my role from a dropdown.
+13. As a user, I want to see a success message after registering.
+14. As a registered user, I want to be redirected to the login page or auto-logged in (pending approval).
+15. As a user, I want to log out via the navbar.
+16. As a user, I want my session to persist if I refresh the page (simulated via local storage).
+17. As a developer, I want a "Reset Database" button to clear local storage for testing.
+18. As a developer, I want quick-login buttons for Driver/Sponsor/Admin to speed up testing.
+19. As a user, I want the password field to be masked.
+20. As a user, I want to see my avatar in the navbar when logged in.
+21. As a user, I want to see my name in the navbar when logged in.
+22. As a user, I want to see my role in the navbar when logged in.
+23. As a user, I want to be redirected to the Dashboard immediately upon login.
+24. As a driver, I want to see my point balance in the navbar.
+25. As a suspended user, I want to be prevented from logging in.
+26. As a user, I want to reset my password if I forget it (placeholder workflow).
+27. As a user, I want to change my password from my profile.
+28. As a user, I want to change my avatar URL from my profile.
+29. As a system, I want to salt and hash passwords (security requirement).
+30. As a system, I want to enforce password complexity rules.
+
+# --- EPIC: DRIVER DASHBOARD & PROFILE (Stories 31-60) ---
+31. As a driver, I want to view my main dashboard.
+32. As a driver, I want to see my total current points prominently displayed.
+33. As a driver, I want to see a "Redeem Points" button next to my balance.
+34. As a driver, I want to view a list of recent point transactions.
+35. As a driver, I want to see the reason for each point transaction.
+36. As a driver, I want to see the date of each point transaction.
+37. As a driver, I want to see the sponsor who awarded/deducted points.
+38. As a driver, I want positive point additions to be green.
+39. As a driver, I want point deductions to be red.
+40. As a driver, I want to see an icon indicating if points went up or down.
+41. As a driver, I want to edit my personal bio.
+42. As a driver, I want to view my current driving status (e.g., Active, On Route).
+43. As a driver, I want to see notifications about new point awards.
+44. As a driver, I want to apply to a specific Sponsor Organization.
+45. As a driver, I want to see the status of my sponsor applications.
+46. As a driver, I want to withdraw a pending application.
+47. As a driver, I want to filter my transaction history by date range.
+48. As a driver, I want to filter my transaction history by Sponsor.
+49. As a driver, I want to see a chart of my point earning over time.
+50. As a driver, I want to see my current "Driver Rank" based on points.
+51. As a driver, I want to upload a profile picture.
+52. As a driver, I want to update my email address.
+53. As a driver, I want to update my phone number.
+54. As a driver, I want to view my assigned truck number.
+55. As a driver, I want to report a discrepancy in my points.
+56. As a driver, I want to switch between multiple sponsors if I work for more than one.
+57. As a driver, I want to view the contact info for my sponsor.
+58. As a driver, I want to enable/disable email notifications.
+59. As a driver, I want to view a "Good Driver" badge if my score is high.
+60. As a driver, I want to see a progress bar towards my next reward tier.
+
+# --- EPIC: SPONSOR DASHBOARD (Stories 61-90) ---
+61. As a sponsor, I want to view the Sponsor Dashboard.
+62. As a sponsor, I want to see the total number of active drivers.
+63. As a sponsor, I want to see the number of pending driver applications.
+64. As a sponsor, I want to see the total points awarded this month.
+65. As a sponsor, I want quick links to "Review Applications".
+66. As a sponsor, I want quick links to "Manage Points".
+67. As a sponsor, I want quick links to "Edit Catalog".
+68. As a sponsor, I want to see a list of my organization's top drivers.
+69. As a sponsor, I want to see a chart of point distribution.
+70. As a sponsor, I want to see an alert if the point budget is low.
+71. As a sponsor, I want to view my organization's profile details.
+72. As a sponsor, I want to upload my organization's logo.
+73. As a sponsor, I want to update the point-to-dollar ratio for my org.
+74. As a sponsor, I want to add other users as admins for my organization.
+75. As a sponsor, I want to remove admins from my organization.
+76. As a sponsor, I want to view a list of all drivers associated with my org.
+77. As a sponsor, I want to search for a specific driver by name.
+78. As a sponsor, I want to filter drivers by status (Active/Suspended).
+79. As a sponsor, I want to see the total dollar value of points outstanding.
+80. As a sponsor, I want to export a list of drivers to CSV.
+81. As a sponsor, I want to customize the welcome message for new drivers.
+82. As a sponsor, I want to set automated birthday point bonuses.
+83. As a sponsor, I want to set automated work anniversary bonuses.
+84. As a sponsor, I want to view recent purchases made by my drivers.
+85. As a sponsor, I want to approve purchase requests (if required).
+86. As a sponsor, I want to deny purchase requests with a reason.
+87. As a sponsor, I want to see a timeline of all system activity for my org.
+88. As a sponsor, I want to message a driver directly.
+89. As a sponsor, I want to broadcast a message to all my drivers.
+90. As a sponsor, I want to view the "About" page to see system version.
+
+# --- EPIC: ADMIN DASHBOARD (Stories 91-120) ---
+91. As an admin, I want to view the System Admin Dashboard.
+92. As an admin, I want to see the total number of Sponsors in the system.
+93. As an admin, I want to see the total number of Drivers in the system.
+94. As an admin, I want to see the total sales volume across the platform.
+95. As an admin, I want to see a list of system alerts (errors, flags).
+96. As an admin, I want quick links to "Create Sponsor".
+97. As an admin, I want quick links to "User Management".
+98. As an admin, I want quick links to "System Logs".
+99. As an admin, I want to view a chart of system growth (users over time).
+100. As an admin, I want to view server health status (mock).
+101. As an admin, I want to see a list of all Sponsor organizations.
+102. As an admin, I want to click a Sponsor to view their details.
+103. As an admin, I want to edit a Sponsor's name.
+104. As an admin, I want to edit a Sponsor's point ratio.
+105. As an admin, I want to delete a Sponsor organization.
+106. As an admin, I want to suspend a Sponsor organization.
+107. As an admin, I want to create a new Sponsor organization.
+108. As an admin, I want to view all users in the system regardless of role.
+109. As an admin, I want to search for any user by username.
+110. As an admin, I want to search for any user by email.
+111. As an admin, I want to reset a user's password manually.
+112. As an admin, I want to change a user's role (e.g., Driver to Sponsor).
+113. As an admin, I want to delete a user account.
+114. As an admin, I want to deactivate/ban a user account.
+115. As an admin, I want to view the audit log for a specific user.
+116. As an admin, I want to configure global system settings.
+117. As an admin, I want to manage the "About" page content.
+118. As an admin, I want to set the system maintenance mode banner.
+119. As an admin, I want to export full database dumps (mock).
+120. As an admin, I want to impersonate a user to debug issues.
+
+# --- EPIC: POINT MANAGEMENT (Stories 121-150) ---
+121. As a sponsor, I want to navigate to the "Manage Driver Points" page.
+122. As a sponsor, I want to select a driver from a dropdown list.
+123. As a sponsor, I want to search for a driver within the dropdown.
+124. As a sponsor, I want to enter a numeric point amount.
+125. As a sponsor, I want to enter a positive number to add points.
+126. As a sponsor, I want to enter a negative number to deduct points.
+127. As a sponsor, I want to see a warning when deducting points.
+128. As a sponsor, I want to enter a text reason for the point change.
+129. As a sponsor, I want to submit the point change transaction.
+130. As a sponsor, I want to see a success notification after updating points.
+131. As a sponsor, I want to see the driver's new balance in the success message.
+132. As a sponsor, I want to see an error if I leave fields blank.
+133. As a sponsor, I want to see an error if I try to deduct more points than the driver has.
+134. As a sponsor, I want the system to log the point transaction automatically.
+135. As a sponsor, I want to assign a category to the points (e.g., Safety, Efficiency).
+136. As a sponsor, I want to set up recurring point awards (e.g., monthly safety bonus).
+137. As a sponsor, I want to bulk-award points to multiple drivers at once.
+138. As a sponsor, I want to upload a CSV to award points in bulk.
+139. As a sponsor, I want to view a history of points I have awarded.
+140. As a sponsor, I want to undo a point transaction if made in error (within 5 mins).
+141. As a system, I want to prevent negative point balances (unless configured otherwise).
+142. As a system, I want to send an email to the driver when points are added.
+143. As a system, I want to send an email to the driver when points are deducted.
+144. As a driver, I want to receive a push notification when points change.
+145. As a sponsor, I want to see a suggestion list of common reasons for points.
+146. As a sponsor, I want to create custom point categories.
+147. As a driver, I want to see how my points translate to dollar value.
+148. As a system, I want to enforce daily point caps per driver (fraud prevention).
+149. As a system, I want to flag unusually large point transactions for review.
+150. As an admin, I want to audit point flows between specific Sponsors and Drivers.
+
+# --- EPIC: CATALOG & REDEMPTION (Stories 151-190) ---
+151. As a driver, I want to navigate to the Catalog page.
+152. As a driver, I want to see a grid of available products.
+153. As a driver, I want to see the name of each product.
+154. As a driver, I want to see the image of each product.
+155. As a driver, I want to see the point cost of each product.
+156. As a driver, I want to see the description of each product.
+157. As a driver, I want to search for products by name.
+158. As a driver, I want to search for products by keyword.
+159. As a driver, I want to filter products by price range.
+160. As a driver, I want to sort products by price (High to Low).
+161. As a driver, I want to sort products by price (Low to High).
+162. As a driver, I want to see an "Out of Stock" badge if an item is unavailable.
+163. As a driver, I want the "Buy" button to be disabled if out of stock.
+164. As a driver, I want the "Buy" button to be disabled if I don't have enough points.
+165. As a driver, I want to click "Buy" to initiate a purchase.
+166. As a driver, I want to confirm my purchase in a modal/popup.
+167. As a driver, I want to see my new point balance immediately after purchase.
+168. As a driver, I want to receive an email confirmation of my order.
+169. As a sponsor, I want to navigate to the "Sponsor Catalog" page.
+170. As a sponsor, I want to see all products available to my drivers.
+171. As a sponsor, I want to add a new product to the catalog.
+172. As a sponsor, I want to enter the product name, description, price, and image URL.
+173. As a sponsor, I want to edit an existing product.
+174. As a sponsor, I want to delete a product.
+175. As a sponsor, I want to toggle a product's availability (In Stock/Out of Stock).
+176. As a sponsor, I want to see how many times a product has been purchased.
+177. As a sponsor, I want to feature specific items at the top of the catalog.
+178. As a sponsor, I want to set a "Sale" price for a limited time.
+179. As a system, I want to prevent product deletion if there are active orders for it.
+180. As a driver, I want to view my order history.
+181. As a driver, I want to see the status of an order (Processing, Shipped).
+182. As a driver, I want to cancel an order before it ships.
+183. As a system, I want to refund points automatically if an order is cancelled.
+184. As a system, I want to pull product data from an external API (iTunes/Amazon - future).
+185. As a sponsor, I want to restrict certain categories of items.
+186. As a driver, I want to save items to a "Wishlist".
+187. As a driver, I want to share a product with another driver.
+188. As a driver, I want to rate and review products.
+189. As a sponsor, I want to view product ratings.
+190. As an admin, I want to manage a global master catalog.
+
+# --- EPIC: DRIVER APPLICATIONS (Stories 191-220) ---
+191. As a new user, I want to create a Driver account.
+192. As a system, I want to mark new Driver accounts as "Pending" by default.
+193. As a driver, I want to submit my application to a specific Sponsor.
+194. As a sponsor, I want to go to the "Driver Applications" page.
+195. As a sponsor, I want to see a list of pending applications.
+196. As a sponsor, I want to see the applicant's name and email.
+197. As a sponsor, I want to see the date the application was submitted.
+198. As a sponsor, I want to click "Approve" to accept a driver.
+199. As a sponsor, I want to click "Reject" to deny a driver.
+200. As a sponsor, I want to provide a reason when rejecting.
+201. As a system, I want to email the driver when they are approved.
+202. As a system, I want to email the driver when they are rejected.
+203. As a system, I want to move the user from "Pending" to "Active" upon approval.
+204. As an admin, I want to see all pending applications across all sponsors.
+205. As an admin, I want to force-approve an application.
+206. As a driver, I want to see "Pending" status on my dashboard while waiting.
+207. As a driver, I want to be able to re-apply if rejected (after X days).
+208. As a sponsor, I want to archive old rejected applications.
+209. As a sponsor, I want to download application data.
+210. As a sponsor, I want to set auto-approval rules (e.g., by email domain).
+211. As a sponsor, I want to ask custom questions on the application form.
+212. As a driver, I want to upload my CDL license during application.
+213. As a sponsor, I want to view the uploaded CDL license.
+214. As a system, I want to verify the email address before allowing application.
+215. As a system, I want to prevent duplicate applications to the same sponsor.
+216. As a driver, I want to apply to multiple sponsors (if allowed).
+217. As a sponsor, I want to see if an applicant has been banned by other sponsors.
+218. As a driver, I want to edit my application before it is reviewed.
+219. As a sponsor, I want to receive an email notification when a new app arrives.
+220. As a system, I want to automatically reject applications that are 6 months old.
+
+# --- EPIC: USER MANAGEMENT - ADMIN (Stories 221-260) ---
+221. As an admin, I want to navigate to the "User Management" page.
+222. As an admin, I want to see a list of pending account requests (global).
+223. As an admin, I want to see the username and role of pending requests.
+224. As an admin, I want to approve a new account request.
+225. As an admin, I want to deny a new account request.
+226. As an admin, I want to see a "Create New User" form on the management page.
+227. As an admin, I want to manually enter a Full Name for a new user.
+228. As an admin, I want to manually enter a Username for a new user.
+229. As an admin, I want to manually enter a Password for a new user.
+230. As an admin, I want to select a Role (Driver/Sponsor/Admin) for a new user.
+231. As an admin, I want to click "Create Account" to bypass approval workflow.
+232. As an admin, I want to see a success message after direct creation.
+233. As an admin, I want to see an error if the username exists.
+234. As an admin, I want to reset a user's password to a temporary one.
+235. As an admin, I want to unlock a user account that is locked out.
+236. As an admin, I want to force a user to change password on next login.
+237. As an admin, I want to update a user's email address.
+238. As an admin, I want to change a user's assigned Sponsor Organization.
+239. As an admin, I want to see when a user last logged in.
+240. As an admin, I want to filter the user list by Role.
+241. As an admin, I want to filter the user list by Sponsor.
+242. As an admin, I want to sort the user list by Date Created.
+243. As an admin, I want to search users by partial name match.
+244. As an admin, I want to see the IP address of the last login.
+245. As an admin, I want to manage API keys for users (if applicable).
+246. As an admin, I want to set a user's status to "Inactive".
+247. As an admin, I want to permanently delete a test user.
+248. As an admin, I want to view a user's "As-Is" view (Impersonation).
+249. As an admin, I want to send a password reset email to a user.
+250. As an admin, I want to batch-upload users via CSV.
+251. As an admin, I want to batch-approve multiple pending users.
+252. As an admin, I want to export the user list to PDF.
+253. As an admin, I want to configure session timeout settings for users.
+254. As an admin, I want to require 2FA for specific roles.
+255. As an admin, I want to see a map of where users are logging in from.
+256. As an admin, I want to manage user permissions granularity.
+257. As an admin, I want to create custom roles (e.g., "Sponsor Viewer").
+258. As an admin, I want to view User Agent strings for logins.
+259. As an admin, I want to clear active sessions for a user.
+260. As an admin, I want to add internal notes to a user profile.
+
+# --- EPIC: REPORTING & LOGS (Stories 261-300) ---
+261. As an admin, I want to navigate to the "Reports" page.
+262. As an admin, I want to see a tabbed interface for different report types.
+263. As an admin, I want to view a "Sales by Sponsor" bar chart.
+264. As an admin, I want to hover over chart bars to see exact values.
+265. As an admin, I want to view a "Driver Point Trends" line chart.
+266. As an admin, I want to toggle lines on the chart for different time periods.
+267. As an admin, I want to view an "Audit Logs" table.
+268. As an admin, I want to see the Date, Actor, Action, Target, and Details in logs.
+269. As an admin, I want to filter audit logs by Actor username.
+270. As an admin, I want to filter audit logs by Action type (e.g., LOGIN).
+271. As an admin, I want to filter audit logs by Date range.
+272. As an admin, I want to click "Export CSV" to download report data.
+273. As an admin, I want the CSV export to respect current filters.
+274. As a sponsor, I want to access a limited version of the Reports page.
+275. As a sponsor, I want to see reports only for my organization.
+276. As a sponsor, I want to see a report of "Most Improved Drivers".
+277. As a sponsor, I want to see a report of "Inactive Drivers".
+278. As a sponsor, I want to see a breakdown of catalog items redeemed.
+279. As a system, I want to log every failed login attempt.
+280. As a system, I want to log every password change.
+281. As a system, I want to log every point transaction.
+282. As a system, I want to log every new user creation.
+283. As a system, I want to log every sponsor creation.
+284. As an admin, I want to schedule automated report emails.
+285. As an admin, I want to view database storage usage stats.
+286. As an admin, I want to view API latency stats.
+287. As an admin, I want to see a heatmap of driver activity.
+288. As a sponsor, I want to see a pie chart of point categories used.
+289. As a driver, I want to download my own point history report.
+290. As a driver, I want to download my own redemption history report.
+291. As an admin, I want to see a report of "orphaned" users (no sponsor).
+292. As an admin, I want to see a report of "dormant" sponsors.
+293. As an admin, I want to customize report date ranges (e.g., Fiscal Year).
+294. As an admin, I want to save custom report configurations.
+295. As an admin, I want to share a report link with another admin.
+296. As an admin, I want to print reports in a printer-friendly format.
+297. As a system, I want to automatically archive logs older than 1 year.
+298. As an admin, I want to search logs by keyword.
+299. As an admin, I want to see visual indicators for critical log events.
+300. As an admin, I want to view a real-time stream of logs (for debugging).
+
+# --- EPIC: ABOUT & GENERAL (Stories 301-350) ---
+301. As a user, I want to navigate to the "About" page.
+302. As a user, I want to see the Team Number.
+303. As a user, I want to see the Version Number.
+304. As a user, I want to see the Release Date.
+305. As a user, I want to see the Product Name.
+306. As a user, I want to see the Product Description.
+307. As a developer, I want the About page data to come from the database.
+308. As a developer, I want a loading spinner while About data fetches.
+309. As a user, I want the navbar to be responsive (mobile hamburger menu).
+310. As a user, I want the footer to show the copyright year dynamically.
+311. As a user, I want to see a 404 page if I visit a bad URL.
+312. As a user, I want to be redirected to Login if I access a protected route.
+313. As a user, I want breadcrumbs for deep navigation pages.
+314. As a user, I want tooltips on icon buttons for accessibility.
+315. As a user, I want the app to be navigable via keyboard (Tab).
+316. As a user, I want the app to have sufficient color contrast (Accessbility).
+317. As a user, I want form labels to be clear and descriptive.
+318. As a user, I want input fields to have placeholder text.
+319. As a user, I want to see a "Back to Dashboard" link on sub-pages.
+320. As a developer, I want to use TypeScript for type safety.
+321. As a developer, I want to use Tailwind CSS for styling.
+322. As a developer, I want to use React Router for navigation.
+323. As a developer, I want to organize code into pages/components/services.
+324. As a developer, I want to use a mock service to simulate backend calls.
+325. As a developer, I want to ensure the app works offline (PWA - future).
+326. As a developer, I want to have a README file for the project.
+327. As a developer, I want to use environment variables for config.
+328. As a user, I want pages to load in under 2 seconds.
+329. As a user, I want animations to be smooth and non-intrusive.
+330. As a user, I want to be able to use the browser "Back" button correctly.
+331. As a developer, I want to verify inputs against XSS attacks.
+332. As a developer, I want to sanitize user inputs.
+333. As a developer, I want to log JavaScript errors to the console.
+334. As a user, I want a "Help" or "Support" link in the footer.
+335. As a user, I want to see a Privacy Policy link.
+336. As a user, I want to see a Terms of Service link.
+337. As a user, I want the layout to adjust for tablets.
+338. As a user, I want the layout to adjust for large desktop screens.
+339. As a user, I want consistent typography across the app.
+340. As a user, I want consistent button styles across the app.
+341. As a user, I want clear distinction between primary and secondary actions.
+342. As a user, I want modal dialogs to close when clicking outside.
+343. As a user, I want to be able to close alerts/notifications.
+344. As a user, I want the app title to update in the browser tab.
+345. As a user, I want a favicon for the application.
+346. As a developer, I want to write unit tests for critical components.
+347. As a developer, I want to write integration tests for user flows.
+348. As a developer, I want to use a linter to ensure code quality.
+349. As a developer, I want to document the API endpoints.
+350. As a user, I want to know that my data is secure and private.
