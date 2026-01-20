@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
-import { createProfile, resetDatabase, getUserProfile } from '../services/mockData';
+import { createProfile, getUserProfile } from '../services/mockData';
 import { authService } from '../services/auth';
-import { isTestMode } from '../services/config';
 import { useNavigate } from 'react-router-dom';
 import { Lock, UserPlus, AlertTriangle } from 'lucide-react';
 
@@ -39,22 +38,65 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const navigate = useNavigate();
 
   const processLoginSuccess = async (uid: string, googleDetails?: { email: string, name: string }) => {
-        // Profile fetch
-        const profile = await getUserProfile(uid);
+        // 1. Try to fetch existing profile
+        try {
+            const profile = await getUserProfile(uid);
 
-        if (profile) {
-            onLogin(profile);
-            navigate('/dashboard');
-        } else {
-            // If they just signed in with Google but have no profile
-            if (googleDetails) {
-                setIsRegistering(true);
-                setRegEmail(googleDetails.email || '');
-                setRegFullName(googleDetails.name || '');
-                setError("Welcome! Please choose a username and role to complete your profile.");
-            } else {
-                setError("Account authenticated, but profile not found in database. Please register.");
+            if (profile) {
+                onLogin(profile);
+                navigate('/dashboard');
+                return;
             }
+
+            // 2. If no profile exists...
+            if (googleDetails) {
+                // AUTO-PROVISIONING: Automatically create a Driver profile for Google users
+                // This prevents the "email-already-in-use" loop by skipping the manual registration form
+                setLoading(true);
+                
+                // Generate a unique username: "john.doe" -> "johndoe_1234"
+                const baseName = googleDetails.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                const randomSuffix = Math.floor(Math.random() * 10000);
+                const autoUsername = `${baseName}_${randomSuffix}`;
+
+                const success = await createProfile(
+                    uid, 
+                    autoUsername, 
+                    googleDetails.name, 
+                    UserRole.DRIVER, 
+                    {
+                        email: googleDetails.email,
+                        phone: '',
+                        address: ''
+                    }
+                );
+
+                if (success) {
+                    const newProfile = await getUserProfile(uid);
+                    if (newProfile) {
+                        onLogin(newProfile);
+                        navigate('/dashboard');
+                    } else {
+                        setError("Profile created but could not be loaded. Please refresh.");
+                        setLoading(false);
+                    }
+                } else {
+                    // Fallback: This usually only happens if username collision, which is rare with 4-digit suffix
+                    setError("Could not auto-create profile. Please register manually.");
+                    setIsRegistering(true);
+                    setRegEmail(googleDetails.email);
+                    setRegFullName(googleDetails.name);
+                    setLoading(false);
+                }
+            } else {
+                // Email/Password login but no profile found (rare/error state)
+                setError("Account authenticated, but profile not found in database. Please register.");
+                setLoading(false);
+            }
+        } catch (e: any) {
+            console.error(e);
+            setError("Login Error: " + e.message);
+            setLoading(false);
         }
   };
 
@@ -71,7 +113,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         let msg = err.message || "Invalid credentials";
         if (msg.includes("API key")) msg = "Invalid Firebase API Key in configuration.";
         setError("Login failed: " + msg);
-    } finally {
         setLoading(false);
     }
   };
@@ -83,12 +124,11 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           const result = await authService.signInWithGoogle();
           await processLoginSuccess(result.user.uid, {
               email: result.user.email || '',
-              name: result.user.displayName || ''
+              name: result.user.displayName || 'Google User'
           });
       } catch (err: any) {
           console.error("Google Sign In Error", err);
           setError("Google Sign-In failed: " + err.message);
-      } finally {
           setLoading(false);
       }
   };
@@ -97,31 +137,25 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       e.preventDefault();
       setError(null);
 
-      // We allow empty password if they are completing a Google OAuth profile
-      const isOAuthCompletion = authService.onStateChange && !regPassword;
-      if ((!regPassword && !isOAuthCompletion) || !regUsername || !regFullName || !regEmail) {
+      if (!regUsername || !regFullName || !regEmail || !regPassword) {
           setError("Please fill in all required fields.");
           return;
       }
       
       setLoading(true);
       try {
+          // 1. Create Authentication User
           let uid = '';
-          
-          if (regPassword) {
-              // Standard Email/Password Registration
-              const userCredential = await authService.signUp(regEmail, regPassword);
-              uid = userCredential.user.uid;
-          } else {
-              // Completing profile for existing auth user (Google)
-              // We need to get the current UID. 
-              // In this flow, the user is technically already "logged in" to Firebase, just not the app.
-              // For simplicity in this facade, we assume the Auth listener in App.tsx might grab them, 
-              // but we can try to re-fetch current user here if possible, or just fail safely.
-              // Note: This is a simplified handling. 
-              setError("Please enter a password to create a standard account, or use Google Sign-In again to retry linking.");
-              setLoading(false);
-              return;
+          try {
+             const userCredential = await authService.signUp(regEmail, regPassword);
+             uid = userCredential.user.uid;
+          } catch (authError: any) {
+             if (authError.code === 'auth/email-already-in-use') {
+                 setError("This email address is already associated with an account. Please sign in instead.");
+                 setLoading(false);
+                 return;
+             }
+             throw authError;
           }
 
           // 2. Create Profile (Facade handles DB switch)
