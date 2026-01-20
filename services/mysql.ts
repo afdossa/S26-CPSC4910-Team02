@@ -83,12 +83,8 @@ export const apiCreateProfile = async (user: User): Promise<boolean> => {
     await new Promise(r => setTimeout(r, 300));
     const db = loadProdDB();
     
-    // BOOTSTRAP: If this is the FIRST user, make them an ADMIN
-    if (db.users.length === 0) {
-        user.role = UserRole.ADMIN;
-        user.username = 'admin'; // Force username for clarity if desired, or keep what they registered
-        console.log("Bootstrapping first user as ADMIN");
-    }
+    // NOTE: Bootstrapping logic removed to enforce role passed from client (e.g. Google Auth -> Driver)
+    // if (db.users.length === 0) { ... }
 
     if (db.users.some(u => u.id === user.id)) return false; // Already exists
     
