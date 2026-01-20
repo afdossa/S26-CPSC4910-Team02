@@ -1,7 +1,8 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { User, UserRole } from '../types';
 import { Truck, LogOut, LayoutDashboard, ShoppingBag, FileBarChart, Info, User as UserIcon } from 'lucide-react';
+import { authService } from '../services/auth';
 
 interface NavbarProps {
   user: User | null;
@@ -10,6 +11,14 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+      authService.logout().then(() => {
+          onLogout();
+          navigate('/login');
+      });
+  };
 
   const isActive = (path: string) => {
     return location.pathname === path ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:text-blue-600';
@@ -73,7 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                   <img src={user.avatarUrl} alt="User" className="h-full w-full object-cover" />
                 </div>
                 <button 
-                  onClick={onLogout}
+                  onClick={handleLogout}
                   className="p-2 rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-600 transition-colors"
                   title="Logout"
                 >

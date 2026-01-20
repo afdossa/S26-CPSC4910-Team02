@@ -5,11 +5,13 @@ export enum UserRole {
 }
 
 export interface User {
-  id: string;
+  id: string; // Matches Firebase UID
   username: string;
-  password?: string; // Added for mock authentication
   role: UserRole;
   fullName: string;
+  email?: string;
+  phoneNumber?: string;
+  address?: string;
   avatarUrl?: string;
   sponsorId?: string; // Links driver to a sponsor
   pointsBalance?: number; // Only for drivers
@@ -20,7 +22,6 @@ export interface PendingUser {
   username: string;
   role: UserRole;
   fullName: string;
-  password?: string; // In real app, this is hashed
   requestDate: string;
 }
 
@@ -28,6 +29,7 @@ export interface SponsorOrganization {
   id: string;
   name: string;
   pointDollarRatio: number; // e.g., 0.01
+  pointsFloor?: number; // Minimum points balance allowed for drivers
 }
 
 export interface Product {
@@ -46,7 +48,7 @@ export interface AuditLog {
   actor: string;
   target: string;
   details: string;
-  category: 'DRIVER_APP' | 'POINT_CHANGE' | 'LOGIN' | 'PASSWORD_CHANGE' | 'USER_MGMT';
+  category: 'DRIVER_APP' | 'POINT_CHANGE' | 'LOGIN' | 'PASSWORD_CHANGE' | 'USER_MGMT' | 'SETTINGS';
 }
 
 export interface PointTransaction {
@@ -67,8 +69,14 @@ export interface AboutData {
 
 export interface DriverApplication {
   id: string;
+  userId: string;
   applicantName: string;
-  email: string;
+  email: string; // from user
+  sponsorId: string;
   date: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  // Detailed info
+  licenseNumber: string;
+  experienceYears: number;
+  reason: string;
 }

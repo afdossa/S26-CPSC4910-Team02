@@ -1,11 +1,14 @@
 import { User, UserRole, Product, SponsorOrganization, AboutData, AuditLog, PointTransaction, DriverApplication, PendingUser } from '../types';
+import { getConfig, isTestMode } from './config';
+import * as MySQL from './mysql';
 
 /**
- * DATABASE MOCK SERVICE
+ * DATA FACADE
  * 
- * This service implements a persistence layer using LocalStorage to simulate a database.
- * This allows for data retention and testing of account creation/management as requested.
- * In a production deployment, this file would be replaced by an API client connecting to a real SQL database.
+ * This service decides whether to use the LocalStorage Mock DB (Test Mode)
+ * or the AWS MySQL API (Prod Mode) based on the configuration.
+ * 
+ * ALL interactions now return Promises to support the async nature of the MySQL connection.
  */
 
 const DB_KEYS = {
@@ -18,255 +21,265 @@ const DB_KEYS = {
     APPS: 'gdip_db_apps_v1'
 };
 
-// --- SEED DATA ---
-const SEED_USERS: User[] = [
-  {
-    id: 'u1',
-    username: 'driver1',
-    password: 'password',
-    role: UserRole.DRIVER,
-    fullName: 'John Trucker',
-    sponsorId: 's1',
-    pointsBalance: 5400,
-    avatarUrl: 'https://picsum.photos/200/200?random=1'
-  },
-  {
-    id: 'u2',
-    username: 'sponsor1',
-    password: 'password',
-    role: UserRole.SPONSOR,
-    fullName: 'Alice Logistics',
-    sponsorId: 's1',
-    avatarUrl: 'https://picsum.photos/200/200?random=2'
-  },
-  {
-    id: 'u3',
-    username: 'admin', // Requested Admin Account
-    password: 'test',  // Requested Password
-    role: UserRole.ADMIN,
-    fullName: 'System Admin',
-    avatarUrl: 'https://picsum.photos/200/200?random=3'
-  }
-];
-
-const SEED_SPONSORS: SponsorOrganization[] = [
-  { id: 's1', name: 'FastLane Logistics', pointDollarRatio: 0.01 },
-  { id: 's2', name: 'Global Freight', pointDollarRatio: 0.015 }
-];
-
-const SEED_CATALOG: Product[] = [
-  {
-    id: 'p1',
-    name: 'Wireless Headset',
-    description: 'Noise cancelling headset perfect for long hauls.',
-    pricePoints: 5000,
-    availability: true,
-    imageUrl: 'https://picsum.photos/400/300?random=10'
-  },
-  {
-    id: 'p2',
-    name: 'Truck GPS System',
-    description: 'Advanced routing with traffic updates.',
-    pricePoints: 15000,
-    availability: true,
-    imageUrl: 'https://picsum.photos/400/300?random=11'
-  },
-  {
-    id: 'p3',
-    name: 'Ergonomic Seat Cushion',
-    description: 'Memory foam cushion for driving comfort.',
-    pricePoints: 2500,
-    availability: true,
-    imageUrl: 'https://picsum.photos/400/300?random=12'
-  },
-  {
-    id: 'p4',
-    name: 'Digital Tire Gauge',
-    description: 'Precision digital tire pressure gauge.',
-    pricePoints: 1200,
-    availability: false,
-    imageUrl: 'https://picsum.photos/400/300?random=13'
-  },
-  {
-    id: 'p5',
-    name: 'Cooler Box 12V',
-    description: 'Electric cooler to keep food fresh.',
-    pricePoints: 8000,
-    availability: true,
-    imageUrl: 'https://picsum.photos/400/300?random=14'
-  }
-];
-
-// --- STORAGE HELPERS ---
-
-const load = <T>(key: string, seed: T): T => {
+// --- MOCK STORAGE HELPERS ---
+const loadMock = <T>(key: string, seed: T): T => {
     try {
         const stored = localStorage.getItem(key);
         return stored ? JSON.parse(stored) : seed;
-    } catch (e) {
-        console.error("Failed to load DB", e);
-        return seed;
-    }
+    } catch (e) { return seed; }
 };
+const persistMock = (key: string, data: any) => localStorage.setItem(key, JSON.stringify(data));
 
-const persist = (key: string, data: any) => {
-    localStorage.setItem(key, JSON.stringify(data));
-};
+// --- MOCK SEED DATA (Kept for Test Mode) ---
+const SEED_USERS: User[] = [
+  { id: 'u1', username: 'driver1', role: UserRole.DRIVER, fullName: 'John Trucker', email: 'john.trucker@example.com', phoneNumber: '555-0101', address: '123 Haul St', sponsorId: 's1', pointsBalance: 5400, avatarUrl: 'https://picsum.photos/200/200?random=1' },
+  { id: 'u2', username: 'sponsor1', role: UserRole.SPONSOR, fullName: 'Alice Logistics', email: 'alice@fastlane.com', sponsorId: 's1', avatarUrl: 'https://picsum.photos/200/200?random=2' },
+  { id: 'u3', username: 'admin', role: UserRole.ADMIN, fullName: 'System Admin', email: 'admin@system.com', avatarUrl: 'https://picsum.photos/200/200?random=3' }
+];
+const SEED_SPONSORS: SponsorOrganization[] = [
+  { id: 's1', name: 'FastLane Logistics', pointDollarRatio: 0.01, pointsFloor: 0 },
+  { id: 's2', name: 'Global Freight', pointDollarRatio: 0.015, pointsFloor: 0 }
+];
+const SEED_CATALOG: Product[] = [
+  { id: 'p1', name: 'Wireless Headset', description: 'Noise cancelling headset.', pricePoints: 5000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=10' },
+  { id: 'p2', name: 'Truck GPS', description: 'Advanced routing.', pricePoints: 15000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=11' }
+];
+
+const SEED_APPLICATIONS: DriverApplication[] = [
+    { id: 'app1', userId: 'u4', applicantName: 'David Drifter', email: 'david@road.com', sponsorId: 's1', date: '2026-02-01', status: 'PENDING', licenseNumber: 'CDL-998877', experienceYears: 5, reason: 'Looking for a safety-focused team.' },
+    { id: 'app2', userId: 'u5', applicantName: 'Sarah Sprinter', email: 'sarah@mile.com', sponsorId: 's1', date: '2026-02-02', status: 'PENDING', licenseNumber: 'CDL-112233', experienceYears: 2, reason: 'Great benefits.' }
+];
+
+const SEED_AUDIT_LOGS: AuditLog[] = [
+    { id: 'l1', date: '2026-01-20', action: 'Login', actor: 'admin', target: 'System', details: 'Admin login detected', category: 'LOGIN' },
+    { id: 'l2', date: '2026-01-21', action: 'Point Adjustment', actor: 'sponsor1', target: 'driver1', details: 'Added 500 points', category: 'POINT_CHANGE' }
+];
+
+// --- PUBLIC EXPORTS FOR MOCK DATA ---
+export const MOCK_USERS = SEED_USERS;
+export const MOCK_CATALOG = SEED_CATALOG;
+export const MOCK_SPONSORS = SEED_SPONSORS;
+export const MOCK_APPLICATIONS = SEED_APPLICATIONS;
+export const MOCK_AUDIT_LOGS = SEED_AUDIT_LOGS;
+
+// --- PUBLIC API (FACADE) ---
+
+const useMockDB = () => getConfig().useMockDB;
 
 export const resetDatabase = () => {
-    localStorage.clear();
-    window.location.reload();
+    if (useMockDB()) {
+        localStorage.clear();
+        window.location.reload();
+    } else {
+        alert("Cannot reset Production MySQL Database from client.");
+    }
 };
 
-// --- STATE INITIALIZATION ---
-// We export these mutable arrays so the existing app structure (imports) continues to work.
-// However, any modification to these arrays is handled by the helper functions below which enforce persistence.
-
-export const MOCK_USERS: User[] = load(DB_KEYS.USERS, SEED_USERS);
-export const MOCK_PENDING_USERS: PendingUser[] = load(DB_KEYS.PENDING, []);
-export const MOCK_SPONSORS: SponsorOrganization[] = load(DB_KEYS.SPONSORS, SEED_SPONSORS);
-export const MOCK_CATALOG: Product[] = load(DB_KEYS.CATALOG, SEED_CATALOG);
-
-export const MOCK_AUDIT_LOGS: AuditLog[] = load(DB_KEYS.LOGS, [
-  { id: 'l1', date: '2026-02-01', action: 'Login Success', actor: 'driver1', target: 'System', details: 'Standard login', category: 'LOGIN' },
-]);
-
-export const MOCK_TRANSACTIONS: PointTransaction[] = load(DB_KEYS.TX, [
-  { id: 't1', date: '2026-01-15', amount: 500, reason: 'Safe Driving Bonus', sponsorName: 'FastLane Logistics' },
-]);
-
-export const MOCK_APPLICATIONS: DriverApplication[] = load(DB_KEYS.APPS, [
-    { id: 'a1', applicantName: 'Michael Knight', email: 'm.knight@foundation.org', date: '2026-02-10', status: 'PENDING' },
-]);
-
-
-// --- ACTIONS ---
-
-export const registerUser = (username: string, fullName: string, role: UserRole, password?: string) => {
-    if (MOCK_USERS.some(u => u.username === username) || MOCK_PENDING_USERS.some(u => u.username === username)) {
-        return false;
+// User Profiles
+export const getUserProfile = async (uid: string): Promise<User | undefined> => {
+    if (useMockDB()) {
+        const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
+        return users.find(u => u.id === uid);
     }
-
-    MOCK_PENDING_USERS.push({
-        id: `pu${Date.now()}`,
-        username,
-        fullName,
-        role,
-        password: password || 'password', // Default if not provided
-        requestDate: new Date().toISOString().split('T')[0]
-    });
-    persist(DB_KEYS.PENDING, MOCK_PENDING_USERS);
-    return true;
+    return await MySQL.apiGetUserProfile(uid);
 };
 
-export const createUser = (username: string, fullName: string, role: UserRole, password?: string) => {
-    if (MOCK_USERS.some(u => u.username === username) || MOCK_PENDING_USERS.some(u => u.username === username)) {
-        return false;
-    }
-
+export const createProfile = async (uid: string, username: string, fullName: string, role: UserRole, additionalInfo?: { email: string, phone: string, address: string }) => {
     const newUser: User = {
-        id: `u${Date.now()}`,
-        username,
-        fullName,
-        role,
-        password: password || 'password',
+        id: uid, username, fullName, role,
+        email: additionalInfo?.email, phoneNumber: additionalInfo?.phone, address: additionalInfo?.address,
         avatarUrl: `https://picsum.photos/200/200?random=${Date.now()}`,
         pointsBalance: role === UserRole.DRIVER ? 0 : undefined
     };
+
+    if (useMockDB()) {
+        const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
+        if (users.some(u => u.username === username)) return false;
+        users.push(newUser);
+        persistMock(DB_KEYS.USERS, users);
+        _addMockLog('User Registered', 'system', username, `Role: ${role}`, 'USER_MGMT');
+        return true;
+    }
     
-    MOCK_USERS.push(newUser);
-    persist(DB_KEYS.USERS, MOCK_USERS);
-
-    addLog('User Created', 'admin', newUser.username, `Direct creation. Role: ${role}`, 'USER_MGMT');
-    return true;
+    return await MySQL.apiCreateProfile(newUser);
 };
 
-export const approveUser = (id: string) => {
-    const index = MOCK_PENDING_USERS.findIndex(u => u.id === id);
-    if (index !== -1) {
-        const pending = MOCK_PENDING_USERS[index];
+// We keep createUser for the Admin UI legacy mock function, but make it async
+export const createUser = async (username: string, fullName: string, role: UserRole, password?: string, additionalInfo?: { email?: string, phone?: string }) => {
+    if (useMockDB()) {
+        const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
         const newUser: User = {
-            id: `u${Date.now()}`,
-            username: pending.username,
-            fullName: pending.fullName,
-            role: pending.role,
-            password: pending.password,
+            id: `local_${Date.now()}`, username, fullName, role,
+            email: additionalInfo?.email, phoneNumber: additionalInfo?.phone,
             avatarUrl: `https://picsum.photos/200/200?random=${Date.now()}`,
-            pointsBalance: pending.role === UserRole.DRIVER ? 0 : undefined
+            pointsBalance: role === UserRole.DRIVER ? 0 : undefined
         };
-        MOCK_USERS.push(newUser);
-        MOCK_PENDING_USERS.splice(index, 1);
-        
-        persist(DB_KEYS.USERS, MOCK_USERS);
-        persist(DB_KEYS.PENDING, MOCK_PENDING_USERS);
-        
-        addLog('Account Approved', 'admin', newUser.username, `Role: ${newUser.role}`, 'USER_MGMT');
+        users.push(newUser);
+        persistMock(DB_KEYS.USERS, users);
         return true;
     }
+    // In production, we can't create users without Firebase Auth, so this might fail or call a cloud function
     return false;
 };
 
-export const rejectUser = (id: string) => {
-    const index = MOCK_PENDING_USERS.findIndex(u => u.id === id);
-    if (index !== -1) {
-        MOCK_PENDING_USERS.splice(index, 1);
-        persist(DB_KEYS.PENDING, MOCK_PENDING_USERS);
-        return true;
-    }
-    return false;
+// Data Getters (All Users)
+export const getAllUsers = async (): Promise<User[]> => {
+    if (useMockDB()) return loadMock(DB_KEYS.USERS, SEED_USERS);
+    // In prod, this would be paginated, but for now return empty
+    return [];
 };
 
-export const updateDriverPoints = (driverId: string, amount: number, reason: string, sponsorName: string) => {
-    const user = MOCK_USERS.find(u => u.id === driverId);
-    if (user && user.pointsBalance !== undefined) {
-        user.pointsBalance += amount;
+// Sponsors
+export const getSponsors = async (): Promise<SponsorOrganization[]> => {
+    if (useMockDB()) return loadMock(DB_KEYS.SPONSORS, SEED_SPONSORS);
+    return await MySQL.apiGetSponsors();
+};
+
+export const getSponsor = (id: string): SponsorOrganization | undefined => {
+    if (useMockDB()) {
+        const sponsors: SponsorOrganization[] = loadMock(DB_KEYS.SPONSORS, SEED_SPONSORS);
+        return sponsors.find(s => s.id === id);
+    }
+    return undefined;
+};
+
+export const addSponsor = async (name: string, ratio: number) => {
+    if (useMockDB()) {
+        const sponsors: SponsorOrganization[] = loadMock(DB_KEYS.SPONSORS, SEED_SPONSORS);
+        sponsors.push({ id: `s${Date.now()}`, name, pointDollarRatio: ratio, pointsFloor: 0 });
+        persistMock(DB_KEYS.SPONSORS, sponsors);
+        return;
+    }
+    await MySQL.apiAddSponsor({ id: '', name, pointDollarRatio: ratio });
+};
+
+export const updateSponsorFloor = async (sponsorId: string, newFloor: number) => {
+    if (useMockDB()) {
+        const sponsors: SponsorOrganization[] = loadMock(DB_KEYS.SPONSORS, SEED_SPONSORS);
+        const s = sponsors.find(x => x.id === sponsorId);
+        if (s) {
+            s.pointsFloor = newFloor;
+            persistMock(DB_KEYS.SPONSORS, sponsors);
+            return true;
+        }
+        return false;
+    }
+    return await MySQL.apiUpdateSponsorFloor(sponsorId, newFloor);
+};
+
+// Applications
+export const submitApplication = async (userId: string, sponsorId: string, details: any) => {
+    if (useMockDB()) {
+        const apps: DriverApplication[] = loadMock(DB_KEYS.APPS, []);
+        const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
+        const user = users.find(u => u.id === userId);
         
-        const tx: PointTransaction = {
-            id: `t${Date.now()}`,
-            date: new Date().toISOString().split('T')[0],
-            amount: amount,
-            reason: reason,
-            sponsorName: sponsorName
+        // Remove old pending
+        const cleanApps = apps.filter(a => !(a.userId === userId && a.status === 'PENDING'));
+        
+        const newApp: DriverApplication = {
+            id: `app${Date.now()}`, userId, sponsorId, applicantName: user?.fullName || 'Unknown',
+            email: user?.email || '', date: new Date().toISOString().split('T')[0], status: 'PENDING', ...details
         };
-        MOCK_TRANSACTIONS.unshift(tx);
-        
-        persist(DB_KEYS.USERS, MOCK_USERS);
-        persist(DB_KEYS.TX, MOCK_TRANSACTIONS);
-
-        addLog(amount > 0 ? 'Points Added' : 'Points Deducted', 'sponsor', user.username, `${reason} (${amount} pts)`, 'POINT_CHANGE');
+        cleanApps.push(newApp);
+        persistMock(DB_KEYS.APPS, cleanApps);
         return true;
     }
-    return false;
+    return await MySQL.apiSubmitApplication({ userId, sponsorId, ...details } as any);
 };
 
-export const addSponsor = (name: string, ratio: number) => {
-    MOCK_SPONSORS.push({
-        id: `s${Date.now()}`,
-        name,
-        pointDollarRatio: ratio
-    });
-    persist(DB_KEYS.SPONSORS, MOCK_SPONSORS);
+export const getDriverApplication = async (userId: string): Promise<DriverApplication | undefined> => {
+    if (useMockDB()) {
+        const apps: DriverApplication[] = loadMock(DB_KEYS.APPS, []);
+        return apps.find(a => a.userId === userId && a.status === 'PENDING');
+    }
+    const apps = await MySQL.apiGetDriverApplications();
+    return apps.find(a => a.userId === userId && a.status === 'PENDING');
 };
 
-// Internal Helper for logging
-const addLog = (action: string, actor: string, target: string, details: string, category: AuditLog['category']) => {
-    MOCK_AUDIT_LOGS.unshift({
-        id: `l${Date.now()}`,
-        date: new Date().toISOString().split('T')[0],
-        action,
-        actor,
-        target,
-        details,
-        category
-    });
-    persist(DB_KEYS.LOGS, MOCK_AUDIT_LOGS);
+export const getAllApplications = async (): Promise<DriverApplication[]> => {
+    if (useMockDB()) return loadMock(DB_KEYS.APPS, []);
+    return await MySQL.apiGetDriverApplications();
 };
 
-// Static Data
+export const processApplication = async (appId: string, approved: boolean) => {
+    if (useMockDB()) {
+        const apps: DriverApplication[] = loadMock(DB_KEYS.APPS, []);
+        const app = apps.find(a => a.id === appId);
+        if (!app) return false;
+        app.status = approved ? 'APPROVED' : 'REJECTED';
+        
+        if (approved) {
+            const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
+            const user = users.find(u => u.id === app.userId);
+            if (user) {
+                user.sponsorId = app.sponsorId;
+                if (user.pointsBalance === undefined) user.pointsBalance = 0;
+                persistMock(DB_KEYS.USERS, users);
+            }
+        }
+        persistMock(DB_KEYS.APPS, apps);
+        return true;
+    }
+    return await MySQL.apiProcessApplication(appId, approved ? 'APPROVED' : 'REJECTED');
+};
+
+// Points
+export const updateDriverPoints = async (driverId: string, amount: number, reason: string, sponsorName: string, sponsorId?: string) => {
+    if (useMockDB()) {
+        const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
+        const user = users.find(u => u.id === driverId);
+        const sponsors: SponsorOrganization[] = loadMock(DB_KEYS.SPONSORS, SEED_SPONSORS);
+        const sponsor = sponsors.find(s => s.id === sponsorId);
+        
+        if (user && user.pointsBalance !== undefined) {
+             if (amount < 0 && sponsor) {
+                 if ((user.pointsBalance + amount) < (sponsor.pointsFloor || 0)) {
+                     return { success: false, message: "Floor limit reached" };
+                 }
+             }
+             user.pointsBalance += amount;
+             
+             const txs: PointTransaction[] = loadMock(DB_KEYS.TX, []);
+             txs.unshift({ id: `t${Date.now()}`, date: new Date().toISOString().split('T')[0], amount, reason, sponsorName });
+             
+             persistMock(DB_KEYS.USERS, users);
+             persistMock(DB_KEYS.TX, txs);
+             return { success: true, message: "Updated Mock DB" };
+        }
+        return { success: false, message: "User not found" };
+    }
+    return await MySQL.apiUpdateDriverPoints(driverId, amount, reason, sponsorId || '');
+};
+
+export const getTransactions = async (): Promise<PointTransaction[]> => {
+    if (useMockDB()) return loadMock(DB_KEYS.TX, [{ id: 't1', date: '2026-01-15', amount: 500, reason: 'Safe Driving Bonus', sponsorName: 'FastLane Logistics' }]);
+    return await MySQL.apiGetTransactions();
+};
+
+export const getCatalog = async (): Promise<Product[]> => {
+    if (useMockDB()) return loadMock(DB_KEYS.CATALOG, SEED_CATALOG);
+    return await MySQL.apiGetCatalog();
+};
+
+export const MOCK_USERS_SYNC = SEED_USERS; // Legacy export for sync filters if absolutely needed, but better to use getAllUsers
+
+// Helpers
+const _addMockLog = (action: string, actor: string, target: string, details: string, category: AuditLog['category']) => {
+    const logs: AuditLog[] = loadMock(DB_KEYS.LOGS, SEED_AUDIT_LOGS);
+    logs.unshift({ id: `l${Date.now()}`, date: new Date().toISOString().split('T')[0], action, actor, target, details, category });
+    persistMock(DB_KEYS.LOGS, logs);
+};
+
+export const getAuditLogs = async (): Promise<AuditLog[]> => {
+    if (useMockDB()) return loadMock(DB_KEYS.LOGS, SEED_AUDIT_LOGS);
+    return [];
+}
+
 export const MOCK_ABOUT_DATA: AboutData = {
   teamNumber: "Team-6",
-  versionNumber: "Sprint-2 (Persisted)",
+  versionNumber: "Sprint-2 (AWS Integration)",
   releaseDate: "Spring 2026",
   productName: "Good (Truck) Driver Incentive Program",
-  description: "A comprehensive platform incentivizing safe driving behaviors through sponsor-backed rewards."
+  description: "A comprehensive platform incentivizing safe driving behaviors through sponsor-backed rewards. Deployed on AWS with MySQL and Redshift archiving."
 };

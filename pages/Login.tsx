@@ -1,68 +1,152 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
-import { MOCK_USERS, registerUser, resetDatabase } from '../services/mockData';
+import { createProfile, resetDatabase, getUserProfile } from '../services/mockData';
+import { authService } from '../services/auth';
+import { isTestMode } from '../services/config';
 import { useNavigate } from 'react-router-dom';
-import { Lock, UserCheck, UserPlus, Database } from 'lucide-react';
+import { Lock, UserPlus, AlertTriangle } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (user: User) => void;
 }
 
+const GoogleIcon = () => (
+    <svg className="h-5 w-5" viewBox="0 0 24 24">
+        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.84z" fill="#FBBC05" />
+        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+    </svg>
+);
+
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [isRegistering, setIsRegistering] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   
   // Login State
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   
   // Register State
   const [regUsername, setRegUsername] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regFullName, setRegFullName] = useState('');
-  const [regRole, setRegRole] = useState<UserRole>(UserRole.DRIVER);
+  const [regEmail, setRegEmail] = useState('');
+  const [regPhone, setRegPhone] = useState('');
+  const [regAddress, setRegAddress] = useState('');
 
   const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const processLoginSuccess = async (uid: string, googleDetails?: { email: string, name: string }) => {
+        // Profile fetch
+        const profile = await getUserProfile(uid);
+
+        if (profile) {
+            onLogin(profile);
+            navigate('/dashboard');
+        } else {
+            // If they just signed in with Google but have no profile
+            if (googleDetails) {
+                setIsRegistering(true);
+                setRegEmail(googleDetails.email || '');
+                setRegFullName(googleDetails.name || '');
+                setError("Welcome! Please choose a username and role to complete your profile.");
+            } else {
+                setError("Account authenticated, but profile not found in database. Please register.");
+            }
+        }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const foundUser = MOCK_USERS.find(u => u.username === username);
-    
-    if (foundUser && foundUser.password === password) {
-      onLogin(foundUser);
-      navigate('/dashboard');
-    } else {
-      alert('Invalid credentials. For testing: admin / test');
+    setError(null);
+    setLoading(true);
+
+    try {
+        const userCredential = await authService.signIn(email, password);
+        await processLoginSuccess(userCredential.user.uid);
+    } catch (err: any) {
+        console.error(err);
+        let msg = err.message || "Invalid credentials";
+        if (msg.includes("API key")) msg = "Invalid Firebase API Key in configuration.";
+        setError("Login failed: " + msg);
+    } finally {
+        setLoading(false);
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleGoogleLogin = async () => {
+      setError(null);
+      setLoading(true);
+      try {
+          const result = await authService.signInWithGoogle();
+          await processLoginSuccess(result.user.uid, {
+              email: result.user.email || '',
+              name: result.user.displayName || ''
+          });
+      } catch (err: any) {
+          console.error("Google Sign In Error", err);
+          setError("Google Sign-In failed: " + err.message);
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!regUsername || !regPassword || !regFullName) {
-          alert("Please fill in all fields.");
+      setError(null);
+
+      // We allow empty password if they are completing a Google OAuth profile
+      const isOAuthCompletion = authService.onStateChange && !regPassword;
+      if ((!regPassword && !isOAuthCompletion) || !regUsername || !regFullName || !regEmail) {
+          setError("Please fill in all required fields.");
           return;
       }
       
-      const success = registerUser(regUsername, regFullName, regRole, regPassword);
-      if (success) {
-          alert("Account created successfully! Please wait for an Admin to approve your account.");
-          setIsRegistering(false);
-          setRegUsername('');
-          setRegPassword('');
-          setRegFullName('');
-      } else {
-          alert("Username already taken.");
-      }
-  };
+      setLoading(true);
+      try {
+          let uid = '';
+          
+          if (regPassword) {
+              // Standard Email/Password Registration
+              const userCredential = await authService.signUp(regEmail, regPassword);
+              uid = userCredential.user.uid;
+          } else {
+              // Completing profile for existing auth user (Google)
+              // We need to get the current UID. 
+              // In this flow, the user is technically already "logged in" to Firebase, just not the app.
+              // For simplicity in this facade, we assume the Auth listener in App.tsx might grab them, 
+              // but we can try to re-fetch current user here if possible, or just fail safely.
+              // Note: This is a simplified handling. 
+              setError("Please enter a password to create a standard account, or use Google Sign-In again to retry linking.");
+              setLoading(false);
+              return;
+          }
 
-  const quickLogin = (role: UserRole) => {
-    // Quick login for dev (bypasses password for standard mocks if needed, but better to use real auth now)
-    // We will find the FIRST user of this role
-    const user = MOCK_USERS.find(u => u.role === role);
-    if (user) {
-        // Auto-fill for convenience
-        setUsername(user.username);
-        setPassword(user.password || 'password');
-    }
+          // 2. Create Profile (Facade handles DB switch)
+          const success = await createProfile(uid, regUsername, regFullName, UserRole.DRIVER, {
+              email: regEmail,
+              phone: regPhone,
+              address: regAddress
+          });
+
+          if (success) {
+              alert("Account created successfully! Signing you in...");
+              const profile = await getUserProfile(uid);
+              if (profile) {
+                  onLogin(profile);
+                  navigate('/dashboard');
+              }
+          } else {
+              setError("Username already taken in profile database.");
+          }
+      } catch (err: any) {
+          console.error(err);
+          setError("Registration failed: " + err.message);
+      } finally {
+          setLoading(false);
+      }
   };
 
   return (
@@ -73,159 +157,184 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             {isRegistering ? 'Create Account' : 'Welcome Back'}
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            {isRegistering ? 'Join the Driver Incentive Program' : 'Sign in to access your dashboard'}
+            {isRegistering ? 'Complete your profile to start earning rewards' : 'Sign in to access your dashboard'}
           </p>
         </div>
+
+        {error && (
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
+                <div className="flex">
+                    <div className="flex-shrink-0">
+                        <AlertTriangle className="h-5 w-5 text-blue-500" />
+                    </div>
+                    <div className="ml-3">
+                        <p className="text-sm text-blue-700">{error}</p>
+                    </div>
+                </div>
+            </div>
+        )}
 
         {isRegistering ? (
              <form className="mt-8 space-y-4" onSubmit={handleRegister}>
                 <div className="rounded-md shadow-sm space-y-3">
                     <div>
-                    <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                    <input
-                        id="fullName"
-                        type="text"
-                        required
-                        className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
-                        value={regFullName}
-                        onChange={(e) => setRegFullName(e.target.value)}
-                    />
+                        <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                        <input
+                            id="fullName"
+                            type="text"
+                            required
+                            className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                            value={regFullName}
+                            onChange={(e) => setRegFullName(e.target.value)}
+                        />
                     </div>
                     <div>
-                    <label htmlFor="regUsername" className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                    <input
-                        id="regUsername"
-                        type="text"
-                        required
-                        className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
-                        value={regUsername}
-                        onChange={(e) => setRegUsername(e.target.value)}
-                    />
+                        <label htmlFor="regUsername" className="block text-sm font-medium text-gray-700 mb-1">Username (Display Name)</label>
+                        <input
+                            id="regUsername"
+                            type="text"
+                            required
+                            className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                            value={regUsername}
+                            onChange={(e) => setRegUsername(e.target.value)}
+                        />
+                    </div>
+                     <div>
+                        <label htmlFor="regEmail" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                        <input
+                            id="regEmail"
+                            type="email"
+                            required
+                            className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                            value={regEmail}
+                            onChange={(e) => setRegEmail(e.target.value)}
+                        />
+                    </div>
+                     <div className="grid grid-cols-2 gap-3">
+                         <div>
+                            <label htmlFor="regPhone" className="block text-sm font-medium text-gray-700 mb-1">Phone (Optional)</label>
+                            <input
+                                id="regPhone"
+                                type="tel"
+                                className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                                value={regPhone}
+                                onChange={(e) => setRegPhone(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                             <label htmlFor="regPassword" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                            <input
+                                id="regPassword"
+                                type="password"
+                                required
+                                className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                                value={regPassword}
+                                onChange={(e) => setRegPassword(e.target.value)}
+                            />
+                        </div>
                     </div>
                     <div>
-                    <label htmlFor="regPassword" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                    <input
-                        id="regPassword"
-                        type="password"
-                        required
-                        className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
-                        value={regPassword}
-                        onChange={(e) => setRegPassword(e.target.value)}
-                    />
-                    </div>
-                    <div>
-                        <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">Account Type</label>
-                        <select
-                            id="role"
-                            className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md bg-white"
-                            value={regRole}
-                            onChange={(e) => setRegRole(e.target.value as UserRole)}
-                        >
-                            <option value={UserRole.DRIVER}>Driver</option>
-                            <option value={UserRole.SPONSOR}>Sponsor</option>
-                            <option value={UserRole.ADMIN}>Admin</option>
-                        </select>
+                        <label htmlFor="regAddress" className="block text-sm font-medium text-gray-700 mb-1">Address (Optional)</label>
+                        <textarea
+                            id="regAddress"
+                            rows={2}
+                            className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                            value={regAddress}
+                            onChange={(e) => setRegAddress(e.target.value)}
+                        />
                     </div>
                 </div>
 
                 <div>
                     <button
                     type="submit"
-                    className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                    disabled={loading}
+                    className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
                     >
                     <span className="absolute left-0 inset-y-0 flex items-center pl-3">
                         <UserPlus className="h-5 w-5 text-green-500 group-hover:text-green-400" aria-hidden="true" />
                     </span>
-                    Sign Up
+                    {loading ? 'Creating Profile...' : 'Complete Registration'}
                     </button>
                 </div>
                 <div className="text-center">
                     <button type="button" onClick={() => setIsRegistering(false)} className="text-sm text-blue-600 hover:text-blue-500">
-                        Already have an account? Sign in
+                        Back to Login
                     </button>
                 </div>
             </form>
         ) : (
-            <form className="mt-8 space-y-6" onSubmit={handleLogin}>
-            <div className="rounded-md shadow-sm -space-y-px">
-                <div>
-                <label htmlFor="username" className="sr-only">Username</label>
-                <input
-                    id="username"
-                    name="username"
-                    type="text"
-                    required
-                    className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-white"
-                    placeholder="Username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                />
-                </div>
-                <div>
-                <label htmlFor="password" className="sr-only">Password</label>
-                <input
-                    id="password"
-                    name="password"
-                    type="password"
-                    required
-                    className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-white"
-                    placeholder="Password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                />
-                </div>
-            </div>
+            <div className="mt-8 space-y-6">
+                <form className="space-y-6" onSubmit={handleLogin}>
+                    <div className="rounded-md shadow-sm -space-y-px">
+                        <div>
+                        <label htmlFor="email" className="sr-only">Email Address</label>
+                        <input
+                            id="email"
+                            name="email"
+                            type="email"
+                            required
+                            className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-white"
+                            placeholder="Email Address"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                        />
+                        </div>
+                        <div>
+                        <label htmlFor="password" className="sr-only">Password</label>
+                        <input
+                            id="password"
+                            name="password"
+                            type="password"
+                            required
+                            className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-white"
+                            placeholder="Password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                        />
+                        </div>
+                    </div>
 
-            <div>
-                <button
-                type="submit"
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                <span className="absolute left-0 inset-y-0 flex items-center pl-3">
-                    <Lock className="h-5 w-5 text-blue-500 group-hover:text-blue-400" aria-hidden="true" />
-                </span>
-                Sign in
-                </button>
-            </div>
-             <div className="text-center">
-                <button type="button" onClick={() => setIsRegistering(true)} className="text-sm text-blue-600 hover:text-blue-500">
-                    Need an account? Create one
-                </button>
-            </div>
-            </form>
-        )}
+                    <div>
+                        <button
+                        type="submit"
+                        disabled={loading}
+                        className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                        >
+                        <span className="absolute left-0 inset-y-0 flex items-center pl-3">
+                            <Lock className="h-5 w-5 text-blue-500 group-hover:text-blue-400" aria-hidden="true" />
+                        </span>
+                        {loading ? 'Signing in...' : 'Sign in with Email'}
+                        </button>
+                    </div>
+                </form>
 
-        {!isRegistering && (
-             <div className="mt-6">
                 <div className="relative">
                     <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-300" />
+                        <div className="w-full border-t border-gray-300"></div>
                     </div>
                     <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-white text-gray-500">
-                        Dev Tools: Pre-fill Credentials
-                    </span>
+                        <span className="px-2 bg-white text-gray-500">Or continue with</span>
                     </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-3 gap-3">
-                    <button onClick={() => quickLogin(UserRole.DRIVER)} className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-xs font-medium text-gray-500 hover:bg-gray-50">
-                    <UserCheck className="w-4 h-4 mr-1"/> Driver
-                    </button>
-                    <button onClick={() => quickLogin(UserRole.SPONSOR)} className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-xs font-medium text-gray-500 hover:bg-gray-50">
-                    <UserCheck className="w-4 h-4 mr-1"/> Sponsor
-                    </button>
-                    <button onClick={() => quickLogin(UserRole.ADMIN)} className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-xs font-medium text-gray-500 hover:bg-gray-50">
-                    <UserCheck className="w-4 h-4 mr-1"/> Admin
-                    </button>
-                </div>
-                
-                <div className="mt-4 border-t border-gray-200 pt-4 text-center">
-                    <button 
-                        onClick={() => { if(window.confirm('Reset all data? This clears local storage.')) resetDatabase(); }} 
-                        className="text-xs text-red-500 hover:text-red-700 flex items-center justify-center mx-auto"
+                <div>
+                    <button
+                        onClick={handleGoogleLogin}
+                        disabled={loading}
+                        className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                     >
-                        <Database className="w-3 h-3 mr-1" /> Reset Local Database
+                        <GoogleIcon />
+                        <span className="ml-3">Sign in with Google</span>
+                    </button>
+                    <p className="mt-2 text-center text-xs text-gray-500">
+                        Supports 2-Step Verification
+                    </p>
+                </div>
+
+                <div className="text-center">
+                    <button type="button" onClick={() => setIsRegistering(true)} className="text-sm text-blue-600 hover:text-blue-500">
+                        Need an account? Register
                     </button>
                 </div>
             </div>
