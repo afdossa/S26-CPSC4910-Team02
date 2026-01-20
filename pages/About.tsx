@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AboutData } from '../types';
 import { MOCK_ABOUT_DATA } from '../services/mockData';
 import { getConfig, updateConfig } from '../services/config';
-import { Server, Users, Code, Calendar, Database, AlertCircle, CheckCircle } from 'lucide-react';
+import { Server, Users, Code, Calendar, Database, AlertCircle, CheckCircle, Power } from 'lucide-react';
 
 export const About: React.FC = () => {
   const [data, setData] = useState<AboutData | null>(null);
@@ -32,6 +32,17 @@ export const About: React.FC = () => {
     const newVal = !config[key];
     updateConfig({ [key]: newVal });
     setConfig({ ...config, [key]: newVal });
+  };
+
+  const isMasterTestMode = config.useMockAuth || config.useMockDB || config.useMockRedshift;
+
+  const toggleMaster = () => {
+      const newState = !isMasterTestMode;
+      updateConfig({
+          useMockAuth: newState,
+          useMockDB: newState,
+          useMockRedshift: newState
+      });
   };
 
   const StatusBadge = ({ active, mockName, realName }: { active: boolean, mockName: string, realName: string }) => (
@@ -112,8 +123,28 @@ export const About: React.FC = () => {
          <p className="text-sm text-gray-500 mb-6">
              Configure which services are actively connected for this session. Use these toggles to switch between simulated "Mock" data and "Live" AWS/Firebase services.
          </p>
-         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
              
+             {/* Master Test Mode Control */}
+             <div className={`border rounded-lg p-4 ${isMasterTestMode ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                 <div className="flex justify-between items-center mb-2">
+                     <h4 className="font-semibold text-gray-700">Test Mode</h4>
+                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isMasterTestMode ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                        {isMasterTestMode ? 'ACTIVE' : 'INACTIVE'}
+                     </span>
+                 </div>
+                 <p className="text-xs text-gray-500 mb-4">Master switch to toggle all services between Live and Mock.</p>
+                 <button 
+                    onClick={toggleMaster}
+                    className={`w-full py-2 px-4 rounded text-sm font-medium transition-colors ${isMasterTestMode ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-green-600 text-white hover:bg-green-700'}`}
+                 >
+                     <div className="flex items-center justify-center">
+                        <Power className="w-4 h-4 mr-2" />
+                        {isMasterTestMode ? 'Switch All to LIVE' : 'Switch All to MOCK'}
+                     </div>
+                 </button>
+             </div>
+
              {/* Auth Control */}
              <div className="border rounded-lg p-4 bg-gray-50">
                  <div className="flex justify-between items-center mb-2">

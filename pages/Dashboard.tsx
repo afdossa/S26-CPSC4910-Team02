@@ -3,7 +3,7 @@ import { User, UserRole, DriverApplication, SponsorOrganization, PointTransactio
 import { submitApplication, getDriverApplication, getSponsors, getTransactions } from '../services/mockData';
 import { triggerRedshiftArchive } from '../services/mysql';
 import { getConfig, updateConfig, isTestMode } from '../services/config';
-import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, XCircle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 interface DashboardProps {
@@ -242,10 +242,27 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
     const [config, setConfig] = useState(getConfig());
     const [archiving, setArchiving] = useState(false);
 
+    // Sync config state if it changes externally (e.g. from About page or Master Toggle)
+    useEffect(() => {
+        const handleConfigChange = () => setConfig(getConfig());
+        window.addEventListener('config-change', handleConfigChange);
+        return () => window.removeEventListener('config-change', handleConfigChange);
+    }, []);
+
     const toggleService = (key: keyof typeof config) => {
         const newVal = !config[key];
         updateConfig({ [key]: newVal });
-        setConfig({ ...config, [key]: newVal });
+    };
+
+    const isMasterTestMode = config.useMockAuth || config.useMockDB || config.useMockRedshift;
+
+    const toggleMaster = () => {
+        const newState = !isMasterTestMode;
+        updateConfig({
+            useMockAuth: newState,
+            useMockDB: newState,
+            useMockRedshift: newState
+        });
     };
 
     const handleArchive = async () => {
@@ -286,8 +303,28 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
                      <Server className="w-5 h-5 mr-2 text-indigo-500" />
                      Service Control Panel
                  </h3>
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                      
+                     {/* Master Test Mode Control */}
+                     <div className={`border rounded-lg p-4 ${isMasterTestMode ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                         <div className="flex justify-between items-center mb-2">
+                             <h4 className="font-semibold text-gray-700">Test Mode</h4>
+                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isMasterTestMode ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                                {isMasterTestMode ? 'ACTIVE' : 'INACTIVE'}
+                             </span>
+                         </div>
+                         <p className="text-xs text-gray-500 mb-4">Master switch to toggle all services between Live and Mock.</p>
+                         <button 
+                            onClick={toggleMaster}
+                            className={`w-full py-2 px-4 rounded text-sm font-medium transition-colors ${isMasterTestMode ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-green-600 text-white hover:bg-green-700'}`}
+                         >
+                             <div className="flex items-center justify-center">
+                                <Power className="w-4 h-4 mr-2" />
+                                {isMasterTestMode ? 'Switch All to LIVE' : 'Switch All to MOCK'}
+                             </div>
+                         </button>
+                     </div>
+
                      {/* Auth Control */}
                      <div className="border rounded-lg p-4 bg-gray-50">
                          <div className="flex justify-between items-center mb-2">
