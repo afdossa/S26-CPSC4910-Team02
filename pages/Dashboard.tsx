@@ -49,7 +49,7 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
     if (await submitApplication(user.id, sponsorId, { licenseNumber: license, experienceYears: experience, reason })) {
        const app = await getDriverApplication(user.id);
        setPendingApp(app);
-       alert("Application submitted successfully!");
+       // Removed alert to provide smoother continuity to dashboard view
     } else {
        alert("Failed to submit application.");
     }

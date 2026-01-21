@@ -83,11 +83,9 @@ export const apiCreateProfile = async (user: User): Promise<boolean> => {
     await new Promise(r => setTimeout(r, 300));
     const db = loadProdDB();
     
-    // Bootstrapping: First user is always ADMIN
-    if (db.users.length === 0) {
-        user.role = UserRole.ADMIN;
-    }
-
+    // REMOVED BOOTSTRAPPING: New users are no longer automatically Admin, even if they are the first user.
+    // To make an Admin, edit the database manually or use the mock admin account.
+    
     if (db.users.some(u => u.id === user.id)) return false; // Already exists
     
     db.users.push(user);
