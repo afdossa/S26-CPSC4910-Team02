@@ -57,7 +57,8 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
 
   if (loading) return <div className="p-10 text-center">Loading dashboard data...</div>;
 
-  if (!user.sponsorId) {
+  // Case 1: No Sponsor AND No Pending Application -> Show Application Form
+  if (!user.sponsorId && !pendingApp) {
       return (
           <div className="max-w-2xl mx-auto space-y-6">
               <div className="bg-white overflow-hidden shadow rounded-lg p-6">
@@ -66,80 +67,86 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
                       <p className="mt-2 text-lg text-gray-600">To start earning points, you need to join a Sponsor Organization.</p>
                   </div>
 
-                  {pendingApp ? (
-                      <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
-                          <div className="flex">
-                              <div className="flex-shrink-0">
-                                  <Clock className="h-5 w-5 text-blue-400" aria-hidden="true" />
-                              </div>
-                              <div className="ml-3">
-                                  <p className="text-sm text-blue-700">
-                                      You have a pending application with <span className="font-bold">{sponsors.find(s => s.id === pendingApp.sponsorId)?.name}</span>.
-                                      <br/>
-                                      Please wait for approval.
-                                  </p>
-                              </div>
+                  <div className="border border-gray-200 rounded-lg p-6">
+                      <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                          <Building className="w-5 h-5 mr-2" /> Apply to a Sponsor
+                      </h3>
+                      <form onSubmit={handleApply} className="space-y-4">
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700">Select Sponsor</label>
+                              <select
+                                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md bg-white border"
+                                  value={sponsorId}
+                                  onChange={(e) => setSponsorId(e.target.value)}
+                              >
+                                  {sponsors.map(s => (
+                                      <option key={s.id} value={s.id}>{s.name} (Ratio: {s.pointDollarRatio})</option>
+                                  ))}
+                              </select>
                           </div>
-                      </div>
-                  ) : (
-                      <div className="border border-gray-200 rounded-lg p-6">
-                          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                              <Building className="w-5 h-5 mr-2" /> Apply to a Sponsor
-                          </h3>
-                          <form onSubmit={handleApply} className="space-y-4">
-                              <div>
-                                  <label className="block text-sm font-medium text-gray-700">Select Sponsor</label>
-                                  <select
-                                      className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md bg-white border"
-                                      value={sponsorId}
-                                      onChange={(e) => setSponsorId(e.target.value)}
-                                  >
-                                      {sponsors.map(s => (
-                                          <option key={s.id} value={s.id}>{s.name} (Ratio: {s.pointDollarRatio})</option>
-                                      ))}
-                                  </select>
-                              </div>
-                              <div>
-                                  <label className="block text-sm font-medium text-gray-700">CDL License Number</label>
-                                  <input 
-                                      type="text" required 
-                                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
-                                      value={license}
-                                      onChange={(e) => setLicense(e.target.value)}
-                                  />
-                              </div>
-                              <div>
-                                  <label className="block text-sm font-medium text-gray-700">Years of Experience</label>
-                                  <input 
-                                      type="number" required min="0"
-                                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
-                                      value={experience}
-                                      onChange={(e) => setExperience(Number(e.target.value))}
-                                  />
-                              </div>
-                               <div>
-                                  <label className="block text-sm font-medium text-gray-700">Why do you want to join us?</label>
-                                  <textarea 
-                                      required
-                                      rows={3}
-                                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
-                                      value={reason}
-                                      onChange={(e) => setReason(e.target.value)}
-                                  />
-                              </div>
-                              <button type="submit" className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                                  Submit Application
-                              </button>
-                          </form>
-                      </div>
-                  )}
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700">CDL License Number</label>
+                              <input 
+                                  type="text" required 
+                                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                                  value={license}
+                                  onChange={(e) => setLicense(e.target.value)}
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700">Years of Experience</label>
+                              <input 
+                                  type="number" required min="0"
+                                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                                  value={experience}
+                                  onChange={(e) => setExperience(Number(e.target.value))}
+                              />
+                          </div>
+                           <div>
+                              <label className="block text-sm font-medium text-gray-700">Why do you want to join us?</label>
+                              <textarea 
+                                  required
+                                  rows={3}
+                                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                                  value={reason}
+                                  onChange={(e) => setReason(e.target.value)}
+                              />
+                          </div>
+                          <button type="submit" className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                              Submit Application
+                          </button>
+                      </form>
+                  </div>
               </div>
           </div>
       );
   }
 
+  // Case 2: Show Dashboard (Active or Pending)
+  const isPending = !user.sponsorId && !!pendingApp;
+  const displaySponsorName = isPending 
+      ? sponsors.find(s => s.id === pendingApp?.sponsorId)?.name 
+      : sponsors.find(s => s.id === user.sponsorId)?.name;
+
   return (
     <div className="space-y-6">
+      {isPending && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+              <div className="flex">
+                  <div className="flex-shrink-0">
+                      <Clock className="h-5 w-5 text-yellow-400" aria-hidden="true" />
+                  </div>
+                  <div className="ml-3">
+                      <p className="text-sm text-yellow-700">
+                          <span className="font-bold">Application Pending:</span> Waiting for acceptance from <span className="font-bold">{displaySponsorName}</span>. 
+                          <br/>
+                          You will be notified once you are confirmed. Your dashboard features are currently in preview mode.
+                      </p>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* Driver Stats Card */}
       <div className="bg-white overflow-hidden shadow rounded-lg">
         <div className="p-5">
@@ -151,15 +158,23 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
               <dl>
                 <dt className="text-sm font-medium text-gray-500 truncate">Current Points Balance</dt>
                 <dd>
-                  <div className="text-3xl font-bold text-gray-900">{user.pointsBalance?.toLocaleString()}</div>
+                  <div className="text-3xl font-bold text-gray-900">
+                      {isPending ? 'N/A' : user.pointsBalance?.toLocaleString()}
+                  </div>
                 </dd>
-                <dt className="text-xs text-gray-400 mt-1">Sponsor: {sponsors.find(s => s.id === user.sponsorId)?.name}</dt>
+                <dt className="text-xs text-gray-400 mt-1">Sponsor: {displaySponsorName} {isPending ? '(Pending)' : ''}</dt>
               </dl>
             </div>
             <div className="ml-5">
-                <Link to="/catalog" className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
-                    Redeem Points
-                </Link>
+                {isPending ? (
+                    <button disabled className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-100 cursor-not-allowed">
+                        Redeem Points
+                    </button>
+                ) : (
+                    <Link to="/catalog" className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                        Redeem Points
+                    </Link>
+                )}
             </div>
           </div>
         </div>
@@ -172,7 +187,7 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
           <p className="mt-1 max-w-2xl text-sm text-gray-500">Your latest earnings and deductions.</p>
         </div>
         <ul className="divide-y divide-gray-200">
-          {transactions.map((t) => (
+          {!isPending && transactions.map((t) => (
             <li key={t.id} className="px-4 py-4 sm:px-6 hover:bg-gray-50">
               <div className="flex items-center justify-between">
                 <div className="flex flex-col">
@@ -192,7 +207,11 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
               </div>
             </li>
           ))}
-          {transactions.length === 0 && <li className="px-4 py-4 text-sm text-gray-500 text-center">No transaction history.</li>}
+          {(transactions.length === 0 || isPending) && (
+              <li className="px-4 py-4 text-sm text-gray-500 text-center italic">
+                  {isPending ? "Transaction history will be available after approval." : "No transaction history."}
+              </li>
+          )}
         </ul>
       </div>
     </div>
