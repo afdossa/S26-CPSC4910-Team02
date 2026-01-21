@@ -199,23 +199,32 @@ export const updateSponsorFloor = async (sponsorId: string, newFloor: number) =>
 
 // Applications
 export const submitApplication = async (userId: string, sponsorId: string, details: any) => {
+    // 1. Get the current user details to populate the application
+    const user = await getUserProfile(userId);
+    
+    // 2. Construct the full application object
+    const newApp: DriverApplication = {
+        id: `app${Date.now()}`, // will be overwritten in MySQL if needed, or used here
+        userId, 
+        sponsorId, 
+        applicantName: user?.fullName || 'Unknown',
+        email: user?.email || '', 
+        date: new Date().toISOString().split('T')[0], 
+        status: 'PENDING', 
+        ...details
+    };
+
     if (useMockDB()) {
         const apps: DriverApplication[] = loadMock(DB_KEYS.APPS, []);
-        const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
-        const user = users.find(u => u.id === userId);
-        
-        // Remove old pending
+        // Remove old pending for this user
         const cleanApps = apps.filter(a => !(a.userId === userId && a.status === 'PENDING'));
-        
-        const newApp: DriverApplication = {
-            id: `app${Date.now()}`, userId, sponsorId, applicantName: user?.fullName || 'Unknown',
-            email: user?.email || '', date: new Date().toISOString().split('T')[0], status: 'PENDING', ...details
-        };
         cleanApps.push(newApp);
         persistMock(DB_KEYS.APPS, cleanApps);
         return true;
     }
-    return await MySQL.apiSubmitApplication({ userId, sponsorId, ...details } as any);
+
+    // Production (MySQL)
+    return await MySQL.apiSubmitApplication(newApp);
 };
 
 export const getDriverApplication = async (userId: string): Promise<DriverApplication | undefined> => {

@@ -19,8 +19,9 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
   // Application Form State
   const [sponsorId, setSponsorId] = useState('');
   const [license, setLicense] = useState('');
-  const [experience, setExperience] = useState<number>(0);
+  const [experience, setExperience] = useState(''); // Changed to string to allow empty initial state
   const [reason, setReason] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -46,13 +47,16 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
 
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (await submitApplication(user.id, sponsorId, { licenseNumber: license, experienceYears: experience, reason })) {
+    setIsSubmitting(true);
+    // Convert experience string back to number for submission
+    if (await submitApplication(user.id, sponsorId, { licenseNumber: license, experienceYears: Number(experience), reason })) {
        const app = await getDriverApplication(user.id);
        setPendingApp(app);
        // Removed alert to provide smoother continuity to dashboard view
     } else {
        alert("Failed to submit application.");
     }
+    setIsSubmitting(false);
   };
 
   if (loading) return <div className="p-10 text-center">Loading dashboard data...</div>;
@@ -99,7 +103,7 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
                                   type="number" required min="0"
                                   className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
                                   value={experience}
-                                  onChange={(e) => setExperience(Number(e.target.value))}
+                                  onChange={(e) => setExperience(e.target.value)}
                               />
                           </div>
                            <div>
@@ -112,8 +116,16 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
                                   onChange={(e) => setReason(e.target.value)}
                               />
                           </div>
-                          <button type="submit" className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                              Submit Application
+                          <button 
+                            type="submit" 
+                            disabled={isSubmitting}
+                            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                          >
+                              {isSubmitting ? (
+                                <>
+                                  <Loader className="w-4 h-4 mr-2 animate-spin" /> Submitting...
+                                </>
+                              ) : 'Submit Application'}
                           </button>
                       </form>
                   </div>
@@ -454,14 +466,17 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
              </div>
         </div>
     );
-}
+};
 
 export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
-  return (
-    <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-      {user.role === UserRole.DRIVER && <DriverDashboard user={user} />}
-      {user.role === UserRole.SPONSOR && <SponsorDashboard user={user} />}
-      {user.role === UserRole.ADMIN && <AdminDashboard user={user} />}
-    </div>
-  );
+    switch (user.role) {
+        case UserRole.DRIVER:
+            return <DriverDashboard user={user} />;
+        case UserRole.SPONSOR:
+            return <SponsorDashboard user={user} />;
+        case UserRole.ADMIN:
+            return <AdminDashboard user={user} />;
+        default:
+            return <div className="p-10 text-center text-red-600">Error: Unknown User Role ({user.role})</div>;
+    }
 };
