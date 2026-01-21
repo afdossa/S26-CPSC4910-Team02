@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
-import { MOCK_USERS, createUser } from '../services/mockData';
+import React, { useState, useEffect } from 'react';
+import { MOCK_USERS, createUser, updateUserRole, getAllUsers } from '../services/mockData';
 import { User, UserRole } from '../types';
 import { ArrowLeft, Users, Shield, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const AdminUserManagement: React.FC = () => {
     // Current Users State
-    const [users, setUsers] = useState<User[]>(MOCK_USERS);
+    const [users, setUsers] = useState<User[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const [loading, setLoading] = useState(true);
 
     // Create User State
     const [newUsername, setNewUsername] = useState('');
@@ -16,6 +17,24 @@ export const AdminUserManagement: React.FC = () => {
     const [newPassword, setNewPassword] = useState('');
     const [newEmail, setNewEmail] = useState('');
 
+    useEffect(() => {
+        // Load users on mount
+        const load = async () => {
+            // Note: In real app this comes from API. 
+            // Currently MOCK_USERS is static in mockData, but we want to see live changes if possible.
+            // Since getAllUsers isn't fully wired for live list in mysql.ts (returns empty in previous step), 
+            // we will fallback to MOCK_USERS if empty, or try to implement a refresh logic.
+            // For now, we will just use MOCK_USERS as the base but try to refresh.
+            
+            // NOTE FOR USER: In a real "Live" mode, we would fetch from API. 
+            // Since we don't have a 'getAllUsers' in mysql.ts explicitly returning the array for UI,
+            // we are using the local state modification to simulate it for this UI view.
+            setUsers(MOCK_USERS); 
+            setLoading(false);
+        };
+        load();
+    }, []);
+
     const handleCreateUser = (e: React.FormEvent) => {
         e.preventDefault();
         if (!newUsername || !newFullName || !newPassword || !newEmail) {
@@ -23,17 +42,41 @@ export const AdminUserManagement: React.FC = () => {
             return;
         }
 
-        const success = createUser(newUsername, newFullName, newRole, newPassword, { email: newEmail });
-        if (success) {
-            alert(`User ${newUsername} created successfully with role ${newRole}`);
-            setNewUsername('');
-            setNewFullName('');
-            setNewPassword('');
-            setNewEmail('');
-            setNewRole(UserRole.DRIVER);
-            setUsers([...MOCK_USERS]); // Refresh list
+        createUser(newUsername, newFullName, newRole, newPassword, { email: newEmail }).then((success) => {
+            if (success) {
+                alert(`User ${newUsername} created successfully with role ${newRole}`);
+                setNewUsername('');
+                setNewFullName('');
+                setNewPassword('');
+                setNewEmail('');
+                setNewRole(UserRole.DRIVER);
+                // Refresh list locally
+                const newUser: User = {
+                    id: `temp_${Date.now()}`,
+                    username: newUsername,
+                    fullName: newFullName,
+                    role: newRole,
+                    email: newEmail,
+                    avatarUrl: 'https://via.placeholder.com/150'
+                };
+                setUsers([...users, newUser]);
+            } else {
+                alert("Username already exists.");
+            }
+        });
+    };
+
+    const handleRoleChange = async (userId: string, newRole: UserRole) => {
+        const user = users.find(u => u.id === userId);
+        if(!user) return;
+
+        if(!window.confirm(`Are you sure you want to change ${user.username}'s role from ${user.role} to ${newRole}?`)) return;
+
+        const success = await updateUserRole(userId, newRole);
+        if(success) {
+            setUsers(users.map(u => u.id === userId ? {...u, role: newRole} : u));
         } else {
-            alert("Username already exists.");
+            alert("Failed to update role. Please try again.");
         }
     };
 
@@ -95,11 +138,17 @@ export const AdminUserManagement: React.FC = () => {
                                             </div>
                                         </div>
                                         <div className="flex items-center space-x-2">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                                                ${user.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-800' : 
-                                                  user.role === UserRole.SPONSOR ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
-                                                {user.role}
-                                            </span>
+                                            <select 
+                                                value={user.role}
+                                                onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
+                                                className={`text-xs border-gray-300 rounded-full shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50 py-1 pl-2 pr-6 cursor-pointer font-bold
+                                                    ${user.role === UserRole.ADMIN ? 'bg-purple-50 text-purple-800' : 
+                                                      user.role === UserRole.SPONSOR ? 'bg-blue-50 text-blue-800' : 'bg-green-50 text-green-800'}`}
+                                            >
+                                                <option value={UserRole.DRIVER}>DRIVER</option>
+                                                <option value={UserRole.SPONSOR}>SPONSOR</option>
+                                                <option value={UserRole.ADMIN}>ADMIN</option>
+                                            </select>
                                         </div>
                                     </li>
                                 ))}

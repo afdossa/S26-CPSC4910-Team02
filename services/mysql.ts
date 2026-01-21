@@ -83,14 +83,28 @@ export const apiCreateProfile = async (user: User): Promise<boolean> => {
     await new Promise(r => setTimeout(r, 300));
     const db = loadProdDB();
     
-    // NOTE: Bootstrapping logic removed to enforce role passed from client (e.g. Google Auth -> Driver)
-    // if (db.users.length === 0) { ... }
+    // Bootstrapping: First user is always ADMIN
+    if (db.users.length === 0) {
+        user.role = UserRole.ADMIN;
+    }
 
     if (db.users.some(u => u.id === user.id)) return false; // Already exists
     
     db.users.push(user);
     saveProdDB(db);
     return true;
+};
+
+export const apiUpdateUserRole = async (userId: string, newRole: UserRole): Promise<boolean> => {
+    await new Promise(r => setTimeout(r, 200));
+    const db = loadProdDB();
+    const user = db.users.find(u => u.id === userId);
+    if (user) {
+        user.role = newRole;
+        saveProdDB(db);
+        return true;
+    }
+    return false;
 };
 
 // --- SPONSORS ---
