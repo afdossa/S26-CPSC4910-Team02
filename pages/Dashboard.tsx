@@ -19,7 +19,7 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
   // Application Form State
   const [sponsorId, setSponsorId] = useState('');
   const [license, setLicense] = useState('');
-  const [experience, setExperience] = useState(''); // Changed to string to allow empty initial state
+  const [experience, setExperience] = useState(''); // Text state for better UX
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -52,7 +52,6 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
     if (await submitApplication(user.id, sponsorId, { licenseNumber: license, experienceYears: Number(experience), reason })) {
        const app = await getDriverApplication(user.id);
        setPendingApp(app);
-       // Removed alert to provide smoother continuity to dashboard view
     } else {
        alert("Failed to submit application.");
     }
@@ -100,10 +99,17 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
                           <div>
                               <label className="block text-sm font-medium text-gray-700">Years of Experience</label>
                               <input 
-                                  type="number" required min="0"
+                                  type="text" 
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  required 
                                   className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
                                   value={experience}
-                                  onChange={(e) => setExperience(e.target.value)}
+                                  onChange={(e) => {
+                                      const val = e.target.value;
+                                      if (/^\d*$/.test(val)) setExperience(val);
+                                  }}
+                                  placeholder="e.g. 5"
                               />
                           </div>
                            <div>
@@ -168,7 +174,14 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
             </div>
             <div className="ml-5 w-0 flex-1">
               <dl>
-                <dt className="text-sm font-medium text-gray-500 truncate">Current Points Balance</dt>
+                <dt className="text-sm font-medium text-gray-500 truncate flex items-center">
+                    Current Points Balance
+                    {!isPending && (user.pointsBalance || 0) > 1000 && (
+                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            <CheckCircle className="w-3 h-3 mr-1" /> Good Driver
+                        </span>
+                    )}
+                </dt>
                 <dd>
                   <div className="text-3xl font-bold text-gray-900">
                       {isPending ? 'N/A' : user.pointsBalance?.toLocaleString()}
@@ -176,6 +189,18 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
                 </dd>
                 <dt className="text-xs text-gray-400 mt-1">Sponsor: {displaySponsorName} {isPending ? '(Pending)' : ''}</dt>
               </dl>
+
+              {!isPending && (
+                <div className="mt-3">
+                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>Reward Tier Progress</span>
+                        <span>5,000 pts</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                        <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: `${Math.min(((user.pointsBalance || 0) / 5000) * 100, 100)}%` }}></div>
+                    </div>
+                </div>
+              )}
             </div>
             <div className="ml-5">
                 {isPending ? (
@@ -273,7 +298,6 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
     const [config, setConfig] = useState(getConfig());
     const [archiving, setArchiving] = useState(false);
 
-    // Sync config state if it changes externally (e.g. from About page or Master Toggle)
     useEffect(() => {
         const handleConfigChange = () => setConfig(getConfig());
         window.addEventListener('config-change', handleConfigChange);
@@ -336,7 +360,6 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
                  </h3>
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                      
-                     {/* Master Test Mode Control */}
                      <div className={`border rounded-lg p-4 ${isMasterTestMode ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
                          <div className="flex justify-between items-center mb-2">
                              <h4 className="font-semibold text-gray-700">Test Mode</h4>
@@ -356,7 +379,6 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
                          </button>
                      </div>
 
-                     {/* Auth Control */}
                      <div className="border rounded-lg p-4 bg-gray-50">
                          <div className="flex justify-between items-center mb-2">
                              <h4 className="font-semibold text-gray-700">Authentication</h4>
@@ -371,7 +393,6 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
                          </button>
                      </div>
 
-                     {/* Database Control */}
                      <div className="border rounded-lg p-4 bg-gray-50">
                          <div className="flex justify-between items-center mb-2">
                              <h4 className="font-semibold text-gray-700">Database</h4>
@@ -386,7 +407,6 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
                          </button>
                      </div>
 
-                     {/* Analytics Control */}
                      <div className="border rounded-lg p-4 bg-gray-50">
                          <div className="flex justify-between items-center mb-2">
                              <h4 className="font-semibold text-gray-700">Warehouse</h4>
@@ -403,7 +423,6 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
                  </div>
              </div>
 
-             {/* Redshift Archive Control (Manual Trigger) */}
              <div className="bg-indigo-900 rounded-lg p-4 text-white flex items-center justify-between shadow-lg">
                 <div className="flex items-center">
                     <Database className="w-8 h-8 mr-4 text-indigo-300" />
