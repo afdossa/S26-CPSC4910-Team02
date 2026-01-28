@@ -31,7 +31,7 @@ const App: React.FC = () => {
   const [testModeActive, setTestModeActive] = useState(isTestMode());
   const [showFlash, setShowFlash] = useState(false);
 
-  // Audio Context for Alarm
+  // Audio Context for Alarm warning
   const playTestModeAlarm = () => {
     try {
         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
