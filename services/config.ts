@@ -39,10 +39,8 @@ export const updateConfig = (newConfig: Partial<ServiceConfig>, forceReload = fa
     // Dispatch event for UI updates
     window.dispatchEvent(new Event('config-change'));
     
-    // Force reload to ensure services re-bind correctly (especially Auth)
+    // Only reload if explicitly forced (avoiding this prevents 404s in some SPA environments)
     if (forceReload) {
-        window.location.reload();
-    } else if (confirm("Configuration changed. Reload page to apply changes?")) {
         window.location.reload();
     }
 };
@@ -50,6 +48,7 @@ export const updateConfig = (newConfig: Partial<ServiceConfig>, forceReload = fa
 export const resetToDefaults = (forceReload = true) => {
     localStorage.removeItem(CONFIG_KEY);
     currentConfig = DEFAULT_CONFIG;
+    window.dispatchEvent(new Event('config-change'));
     if(forceReload) window.location.reload();
 };
 
@@ -58,7 +57,7 @@ export const forceTestMode = () => {
         useMockAuth: true,
         useMockDB: true,
         useMockRedshift: true
-    }, true);
+    }, false);
 };
 
 // Helper for the "Test Mode" visual indicator (Red Border)
