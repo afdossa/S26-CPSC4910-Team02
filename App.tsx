@@ -32,7 +32,7 @@ const App: React.FC = () => {
   const [showFlash, setShowFlash] = useState(false);
   const [configVersion, setConfigVersion] = useState(0); // Used to trigger re-subscription to auth
 
-  // Audio Context for Alarm
+  // Audio Context for Alarm warning
   const playTestModeAlarm = () => {
     try {
         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
