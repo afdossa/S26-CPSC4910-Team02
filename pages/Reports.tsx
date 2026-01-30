@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { MOCK_AUDIT_LOGS } from '../services/mockData';
 import { Download } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 
 const SALES_DATA = [
   { name: 'FastLane Logistics', sales: 4000 },
@@ -25,15 +25,16 @@ const POINTS_DATA = [
 ];
 
 export const Reports: React.FC = () => {
-    const [searchParams] = useSearchParams();
+    const location = useLocation();
     const [activeTab, setActiveTab] = useState<'sales' | 'points' | 'audit'>('sales');
 
     useEffect(() => {
+        const searchParams = new URLSearchParams(location.search);
         const tab = searchParams.get('tab');
         if (tab === 'audit' || tab === 'sales' || tab === 'points') {
             setActiveTab(tab);
         }
-    }, [searchParams]);
+    }, [location.search]);
 
     const downloadCSV = () => {
         alert("Downloading CSV report...");

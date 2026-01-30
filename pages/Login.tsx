@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
-import { createProfile, getUserProfile } from '../services/mockData';
+import { createProfile, getUserProfile, getAllUsers } from '../services/mockData';
 import { authService } from '../services/auth';
+import { updateConfig, isTestMode, getConfig } from '../services/config';
 import { useNavigate } from 'react-router-dom';
-import { Lock, UserPlus, AlertTriangle } from 'lucide-react';
+import { Lock, UserPlus, AlertTriangle, Beaker, Shield, Building, Truck, RefreshCw, Loader } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -35,10 +36,23 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [regPhone, setRegPhone] = useState('');
   const [regAddress, setRegAddress] = useState('');
 
+  // Test Mode State
+  const [testMode, setTestMode] = useState(isTestMode());
+  const [isSwitchingMode, setIsSwitchingMode] = useState(false);
+
   const navigate = useNavigate();
 
+  // Listen for global config changes
+  useEffect(() => {
+      const handleConfigChange = () => {
+          setTestMode(isTestMode());
+          setIsSwitchingMode(false); // Stop spinning when change is detected
+      };
+      window.addEventListener('config-change', handleConfigChange);
+      return () => window.removeEventListener('config-change', handleConfigChange);
+  }, []);
+
   const processLoginSuccess = async (uid: string, googleDetails?: { email: string, name: string }) => {
-        // 1. Try to fetch existing profile
         try {
             const profile = await getUserProfile(uid);
 
@@ -48,13 +62,11 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 return;
             }
 
-            // 2. If no profile exists...
             if (googleDetails) {
-                // AUTO-PROVISIONING: Automatically create a Driver profile for Google users
-                // This prevents the "email-already-in-use" loop by skipping the manual registration form
                 setLoading(true);
+                const allUsers = await getAllUsers();
+                const roleToAssign = allUsers.length === 0 ? UserRole.ADMIN : UserRole.DRIVER;
                 
-                // Generate a unique username: "john.doe" -> "johndoe_1234"
                 const baseName = googleDetails.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
                 const randomSuffix = Math.floor(Math.random() * 10000);
                 const autoUsername = `${baseName}_${randomSuffix}`;
@@ -63,7 +75,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     uid, 
                     autoUsername, 
                     googleDetails.name, 
-                    UserRole.DRIVER, 
+                    roleToAssign, 
                     {
                         email: googleDetails.email,
                         phone: '',
@@ -76,12 +88,14 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     if (newProfile) {
                         onLogin(newProfile);
                         navigate('/dashboard');
+                        if (roleToAssign === UserRole.ADMIN) {
+                            alert("Welcome! You are the first user, so you have been assigned ADMIN privileges.");
+                        }
                     } else {
                         setError("Profile created but could not be loaded. Please refresh.");
                         setLoading(false);
                     }
                 } else {
-                    // Fallback: This usually only happens if username collision, which is rare with 4-digit suffix
                     setError("Could not auto-create profile. Please register manually.");
                     setIsRegistering(true);
                     setRegEmail(googleDetails.email);
@@ -89,7 +103,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     setLoading(false);
                 }
             } else {
-                // Email/Password login but no profile found (rare/error state)
                 setError("Account authenticated, but profile not found in database. Please register.");
                 setLoading(false);
             }
@@ -144,7 +157,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       
       setLoading(true);
       try {
-          // 1. Create Authentication User
           let uid = '';
           try {
              const userCredential = await authService.signUp(regEmail, regPassword);
@@ -157,20 +169,26 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
              }
              throw authError;
           }
+          
+          const allUsers = await getAllUsers();
+          const roleToAssign = allUsers.length === 0 ? UserRole.ADMIN : UserRole.DRIVER;
 
-          // 2. Create Profile (Facade handles DB switch)
-          const success = await createProfile(uid, regUsername, regFullName, UserRole.DRIVER, {
+          const success = await createProfile(uid, regUsername, regFullName, roleToAssign, {
               email: regEmail,
               phone: regPhone,
               address: regAddress
           });
 
           if (success) {
-              alert("Account created successfully! Signing you in...");
               const profile = await getUserProfile(uid);
               if (profile) {
                   onLogin(profile);
                   navigate('/dashboard');
+                  if (roleToAssign === UserRole.ADMIN) {
+                      alert("Welcome! You are the first user, so you have been assigned ADMIN privileges.");
+                  } else {
+                      alert("Account created successfully! Signing you in...");
+                  }
               }
           } else {
               setError("Username already taken in profile database.");
@@ -183,8 +201,35 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       }
   };
 
+  // --- VALIDATION TOOLS LOGIC ---
+  const toggleTestMode = () => {
+      setIsSwitchingMode(true);
+      const newState = !testMode;
+      
+      // Update config WITHOUT forcing reload.
+      // App.tsx is now listening to config changes and will re-bind Auth service automatically.
+      updateConfig({
+          useMockAuth: newState,
+          useMockDB: newState,
+          useMockRedshift: newState
+      }, false); 
+  };
+
+  const fillCreds = (type: 'admin' | 'sponsor' | 'driver') => {
+      // 1. Force into Login mode (not register mode)
+      setIsRegistering(false);
+      setError(null);
+      
+      // 2. Set credentials
+      setPassword('password');
+      
+      if (type === 'admin') setEmail('admin@system.com');
+      else if (type === 'sponsor') setEmail('alice@fastlane.com');
+      else if (type === 'driver') setEmail('john.trucker@example.com');
+  };
+
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
@@ -210,6 +255,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
         {isRegistering ? (
              <form className="mt-8 space-y-4" onSubmit={handleRegister}>
+                {/* Registration Form Fields */}
                 <div className="rounded-md shadow-sm space-y-3">
                     <div>
                         <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
@@ -354,6 +400,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
                 <div>
                     <button
+                        type="button"
                         onClick={handleGoogleLogin}
                         disabled={loading}
                         className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
@@ -373,6 +420,71 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 </div>
             </div>
         )}
+      </div>
+
+      {/* --- VALIDATION TOOLS PANEL --- */}
+      {/* This section is intended for internal validation/demo only. Remove before final production deployment. */}
+      <div className="mt-8 p-4 bg-slate-100 border border-slate-300 rounded-lg max-w-md w-full relative group shadow-sm transition-all duration-300">
+          <div className="absolute -top-3 left-4 bg-slate-500 text-white text-xs px-2 py-0.5 rounded uppercase font-bold tracking-wider">
+              Validation Tools
+          </div>
+          
+          <div className="flex items-center justify-between mb-2 mt-2">
+              <div className="flex items-center text-sm font-medium text-slate-700">
+                  <Beaker className="w-4 h-4 mr-2 text-slate-500" />
+                  Test Mode: {testMode ? <span className="text-green-600 font-bold ml-1">ON</span> : <span className="text-red-600 font-bold ml-1">OFF</span>}
+              </div>
+              <button 
+                  type="button"
+                  onClick={toggleTestMode}
+                  disabled={isSwitchingMode}
+                  className={`text-xs px-3 py-1.5 rounded border shadow-sm transition-colors flex items-center ${testMode ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'}`}
+              >
+                  {isSwitchingMode ? (
+                      <>
+                        <Loader className="w-3 h-3 mr-1 animate-spin" /> Switching...
+                      </>
+                  ) : (
+                      <>
+                        <RefreshCw className="w-3 h-3 mr-1" />
+                        {testMode ? 'Disable Mocks' : 'Enable Mocks'}
+                      </>
+                  )}
+              </button>
+          </div>
+
+          {testMode && !isSwitchingMode && (
+              <div className="space-y-2 pt-2 border-t border-slate-200 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <p className="text-xs text-slate-500 mb-2 font-semibold">One-Click Credentials:</p>
+                  <div className="grid grid-cols-3 gap-2">
+                      <button 
+                          type="button"
+                          onClick={() => fillCreds('admin')}
+                          className="flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded hover:bg-purple-50 hover:border-purple-200 transition-all text-xs font-medium text-slate-600 hover:text-purple-700 hover:shadow-sm"
+                      >
+                          <Shield className="w-4 h-4 mb-1" />
+                          Admin
+                      </button>
+                      <button 
+                          type="button"
+                          onClick={() => fillCreds('sponsor')}
+                          className="flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded hover:bg-blue-50 hover:border-blue-200 transition-all text-xs font-medium text-slate-600 hover:text-blue-700 hover:shadow-sm"
+                      >
+                          <Building className="w-4 h-4 mb-1" />
+                          Sponsor
+                      </button>
+                      <button 
+                          type="button"
+                          onClick={() => fillCreds('driver')}
+                          className="flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded hover:bg-amber-50 hover:border-amber-200 transition-all text-xs font-medium text-slate-600 hover:text-amber-700 hover:shadow-sm"
+                      >
+                          <Truck className="w-4 h-4 mb-1" />
+                          Driver
+                      </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 text-center pt-1">Populates form above. Click 'Sign in' to proceed.</p>
+              </div>
+          )}
       </div>
     </div>
   );
