@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, DriverApplication, SponsorOrganization, PointTransaction } from '../types';
-import { submitApplication, getDriverApplication, getSponsors, getTransactions } from '../services/mockData';
+import { submitApplication, getDriverApplication, getSponsors, getTransactions, updateUserPreferences, getUserProfile } from '../services/mockData';
 import { triggerRedshiftArchive } from '../services/mysql';
 import { getConfig, updateConfig, isTestMode } from '../services/config';
-import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 interface DashboardProps {
@@ -23,18 +23,25 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Preference State
+  const [alertsEnabled, setAlertsEnabled] = useState(user.preferences?.alertsEnabled ?? true);
+
   useEffect(() => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [app, spList, txList] = await Promise.all([
+            const [app, spList, txList, freshUser] = await Promise.all([
                 getDriverApplication(user.id),
                 getSponsors(),
-                getTransactions() // In real app, filter by user.id
+                getTransactions(), // In real app, filter by user.id
+                getUserProfile(user.id)
             ]);
             setPendingApp(app);
             setSponsors(spList);
             setTransactions(txList);
+            if (freshUser && freshUser.preferences) {
+                setAlertsEnabled(freshUser.preferences.alertsEnabled);
+            }
             if (spList.length > 0) setSponsorId(spList[0].id);
         } catch (e) {
             console.error(e);
@@ -58,6 +65,12 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
     setIsSubmitting(false);
   };
 
+  const toggleAlerts = async () => {
+    const newVal = !alertsEnabled;
+    setAlertsEnabled(newVal);
+    await updateUserPreferences(user.id, { alertsEnabled: newVal });
+  };
+
   if (loading) return <div className="p-10 text-center">Loading dashboard data...</div>;
 
   // Case 1: No Sponsor AND No Pending Application -> Show Application Form
@@ -66,7 +79,7 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
           <div className="max-w-2xl mx-auto space-y-6">
               <div className="bg-white overflow-hidden shadow rounded-lg p-6">
                   <div className="text-center mb-8">
-                      <h2 className="text-3xl font-extrabold text-gray-900">Welcome, {user.fullName}!</h2>
+                      <h2 className="text-3xl font-bold text-gray-900">Welcome, {user.fullName}!</h2>
                       <p className="mt-2 text-lg text-gray-600">To start earning points, you need to join a Sponsor Organization.</p>
                   </div>
 
@@ -215,6 +228,34 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Preferences Card */}
+      <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center mb-4">
+                  <Bell className="h-5 w-5 text-gray-400 mr-2" />
+                  <h3 className="text-lg leading-6 font-medium text-gray-900">Preferences</h3>
+              </div>
+              <div className="max-w-xl text-sm text-gray-500 mb-5">
+                  <p>Manage how you receive notifications from the program.</p>
+              </div>
+              <div className="flex items-center justify-between">
+                  <span className="flex-grow flex flex-col">
+                      <span className="text-sm font-medium text-gray-900">Point Change Alerts</span>
+                      <span className="text-sm text-gray-500">Receive notifications when your points balance changes.</span>
+                  </span>
+                  <button
+                      type="button"
+                      onClick={toggleAlerts}
+                      className={`${alertsEnabled ? 'bg-blue-600' : 'bg-gray-200'} relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
+                      role="switch"
+                      aria-checked={alertsEnabled}
+                  >
+                      <span aria-hidden="true" className={`${alertsEnabled ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200`} />
+                  </button>
+              </div>
+          </div>
       </div>
 
       {/* History */}

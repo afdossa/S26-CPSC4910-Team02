@@ -32,9 +32,9 @@ const persistMock = (key: string, data: any) => localStorage.setItem(key, JSON.s
 
 // --- MOCK SEED DATA (Kept for Test Mode) ---
 const SEED_USERS: User[] = [
-  { id: 'u1', username: 'driver1', role: UserRole.DRIVER, fullName: 'John Trucker', email: 'john.trucker@example.com', phoneNumber: '555-0101', address: '123 Haul St', sponsorId: 's1', pointsBalance: 5400, avatarUrl: 'https://picsum.photos/200/200?random=1' },
-  { id: 'u2', username: 'sponsor1', role: UserRole.SPONSOR, fullName: 'Alice Logistics', email: 'alice@fastlane.com', sponsorId: 's1', avatarUrl: 'https://picsum.photos/200/200?random=2' },
-  { id: 'u3', username: 'admin', role: UserRole.ADMIN, fullName: 'System Admin', email: 'admin@system.com', avatarUrl: 'https://picsum.photos/200/200?random=3' }
+  { id: 'u1', username: 'driver1', role: UserRole.DRIVER, fullName: 'John Trucker', email: 'john.trucker@example.com', phoneNumber: '555-0101', address: '123 Haul St', sponsorId: 's1', pointsBalance: 5400, avatarUrl: 'https://picsum.photos/200/200?random=1', preferences: { alertsEnabled: true } },
+  { id: 'u2', username: 'sponsor1', role: UserRole.SPONSOR, fullName: 'Alice Logistics', email: 'alice@fastlane.com', sponsorId: 's1', avatarUrl: 'https://picsum.photos/200/200?random=2', preferences: { alertsEnabled: true } },
+  { id: 'u3', username: 'admin', role: UserRole.ADMIN, fullName: 'System Admin', email: 'admin@system.com', avatarUrl: 'https://picsum.photos/200/200?random=3', preferences: { alertsEnabled: true } }
 ];
 const SEED_SPONSORS: SponsorOrganization[] = [
   { id: 's1', name: 'FastLane Logistics', pointDollarRatio: 0.01, pointsFloor: 0 },
@@ -84,12 +84,27 @@ export const getUserProfile = async (uid: string): Promise<User | undefined> => 
     return await MySQL.apiGetUserProfile(uid);
 };
 
+export const updateUserPreferences = async (userId: string, prefs: { alertsEnabled: boolean }) => {
+    if (useMockDB()) {
+        const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
+        const user = users.find(u => u.id === userId);
+        if (user) {
+            user.preferences = { ...(user.preferences || { alertsEnabled: true }), ...prefs };
+            persistMock(DB_KEYS.USERS, users);
+            return true;
+        }
+        return false;
+    }
+    return await MySQL.apiUpdateUserPreferences(userId, prefs);
+};
+
 export const createProfile = async (uid: string, username: string, fullName: string, role: UserRole, additionalInfo?: { email: string, phone: string, address: string }) => {
     const newUser: User = {
         id: uid, username, fullName, role,
         email: additionalInfo?.email, phoneNumber: additionalInfo?.phone, address: additionalInfo?.address,
         avatarUrl: `https://picsum.photos/200/200?random=${Date.now()}`,
-        pointsBalance: role === UserRole.DRIVER ? 0 : undefined
+        pointsBalance: role === UserRole.DRIVER ? 0 : undefined,
+        preferences: { alertsEnabled: true }
     };
 
     if (useMockDB()) {
@@ -112,7 +127,8 @@ export const createUser = async (username: string, fullName: string, role: UserR
             id: `local_${Date.now()}`, username, fullName, role,
             email: additionalInfo?.email, phoneNumber: additionalInfo?.phone,
             avatarUrl: `https://picsum.photos/200/200?random=${Date.now()}`,
-            pointsBalance: role === UserRole.DRIVER ? 0 : undefined
+            pointsBalance: role === UserRole.DRIVER ? 0 : undefined,
+            preferences: { alertsEnabled: true }
         };
         users.push(newUser);
         persistMock(DB_KEYS.USERS, users);
@@ -301,7 +317,7 @@ export const getAuditLogs = async (): Promise<AuditLog[]> => {
 }
 
 export const MOCK_ABOUT_DATA: AboutData = {
-  teamNumber: "Team-2",
+  teamNumber: "Team-6",
   versionNumber: "Sprint-2 (AWS Integration)",
   releaseDate: "Spring 2026",
   productName: "Good (Truck) Driver Incentive Program",

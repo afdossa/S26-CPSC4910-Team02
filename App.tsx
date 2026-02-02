@@ -263,7 +263,7 @@ const App: React.FC = () => {
         <footer className="bg-white border-t border-gray-200">
           <div className="max-w-7xl mx-auto py-6 px-4 overflow-hidden sm:px-6 lg:px-8">
             <p className="mt-1 text-center text-sm text-gray-400">
-              &copy; 2026 Good Driver Incentive Program. Team 2. AWS Powered.
+              &copy; 2026 Good Driver Incentive Program. Team 6. AWS Powered.
             </p>
           </div>
         </footer>

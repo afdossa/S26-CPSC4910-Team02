@@ -109,6 +109,17 @@ export const apiUpdateUserRole = async (userId: string, newRole: UserRole): Prom
     return false;
 };
 
+export const apiUpdateUserPreferences = async (userId: string, prefs: { alertsEnabled: boolean }) => {
+    const db = loadProdDB();
+    const user = db.users.find(u => u.id === userId);
+    if (user) {
+        user.preferences = { ...(user.preferences || { alertsEnabled: true }), ...prefs };
+        saveProdDB(db);
+        return true;
+    }
+    return false;
+};
+
 // --- SPONSORS ---
 export const apiGetSponsors = async (): Promise<SponsorOrganization[]> => {
     await new Promise(r => setTimeout(r, 200));

@@ -15,6 +15,9 @@ export interface User {
   avatarUrl?: string;
   sponsorId?: string; // Links driver to a sponsor
   pointsBalance?: number; // Only for drivers
+  preferences?: {
+    alertsEnabled: boolean;
+  };
 }
 
 export interface PendingUser {
