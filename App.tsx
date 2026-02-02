@@ -30,7 +30,6 @@ const App: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(true);
   const [testModeActive, setTestModeActive] = useState(isTestMode());
   const [showFlash, setShowFlash] = useState(false);
-  const [configVersion, setConfigVersion] = useState(0); // Used to trigger re-subscription to auth
 
   // Audio Context for Alarm warning
   const playTestModeAlarm = () => {
@@ -64,13 +63,6 @@ const App: React.FC = () => {
     const handleConfigChange = () => {
         const active = isTestMode();
         setTestModeActive(active);
-        
-        // Increment version to force Auth Service re-bind in the other useEffect
-        setConfigVersion(v => v + 1);
-        // Clear current user when switching modes to avoid state pollution
-        setUser(null); 
-        setAuthLoading(true);
-
         if (active) {
             setShowFlash(true);
             playTestModeAlarm();
@@ -100,8 +92,6 @@ const App: React.FC = () => {
       }, 3000);
 
       // Global Auth Listener (Facade)
-      // This will re-run whenever `configVersion` changes, binding to either Real Firebase or Mock Auth
-      console.log("Binding Auth Service Listener (Config Version: " + configVersion + ")");
       const unsubscribe = authService.onStateChange(async (firebaseUser) => {
           if (firebaseUser) {
               // User is signed in, fetch profile data
@@ -129,7 +119,7 @@ const App: React.FC = () => {
           unsubscribe();
           clearTimeout(safetyTimeout);
       };
-  }, [configVersion]); // Dependent on configVersion
+  }, []);
 
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
@@ -145,7 +135,7 @@ const App: React.FC = () => {
               useMockAuth: false,
               useMockDB: false,
               useMockRedshift: false
-          }, false); // No hard reload
+          }, true); // Force reload
       }
   };
 
@@ -225,45 +215,45 @@ const App: React.FC = () => {
 
             <Route path="/catalog" element={
               <ProtectedRoute user={user}>
-                {user?.role === UserRole.DRIVER ? <Catalog /> : <Navigate to="/dashboard" replace />}
+                {user?.role === UserRole.DRIVER ? <Catalog /> : <Navigate to="/dashboard" />}
               </ProtectedRoute>
             } />
 
             <Route path="/reports" element={
               <ProtectedRoute user={user}>
-                {(user?.role === UserRole.ADMIN || user?.role === UserRole.SPONSOR) ? <Reports /> : <Navigate to="/dashboard" replace />}
+                {(user?.role === UserRole.ADMIN || user?.role === UserRole.SPONSOR) ? <Reports /> : <Navigate to="/dashboard" />}
               </ProtectedRoute>
             } />
 
             {/* Sponsor Specific Routes */}
             <Route path="/sponsor/applications" element={
               <ProtectedRoute user={user}>
-                {user?.role === UserRole.SPONSOR ? <SponsorApplications /> : <Navigate to="/dashboard" replace />}
+                {user?.role === UserRole.SPONSOR ? <SponsorApplications /> : <Navigate to="/dashboard" />}
               </ProtectedRoute>
             } />
             
             <Route path="/sponsor/points" element={
               <ProtectedRoute user={user}>
-                 {user?.role === UserRole.SPONSOR ? <SponsorPoints /> : <Navigate to="/dashboard" replace />}
+                 {user?.role === UserRole.SPONSOR ? <SponsorPoints /> : <Navigate to="/dashboard" />}
               </ProtectedRoute>
             } />
 
             <Route path="/sponsor/catalog" element={
                <ProtectedRoute user={user}>
-                 {user?.role === UserRole.SPONSOR ? <SponsorCatalog /> : <Navigate to="/dashboard" replace />}
+                 {user?.role === UserRole.SPONSOR ? <SponsorCatalog /> : <Navigate to="/dashboard" />}
                </ProtectedRoute>
             } />
 
             {/* Admin Specific Routes */}
             <Route path="/admin/sponsors" element={
               <ProtectedRoute user={user}>
-                 {user?.role === UserRole.ADMIN ? <AdminSponsors /> : <Navigate to="/dashboard" replace />}
+                 {user?.role === UserRole.ADMIN ? <AdminSponsors /> : <Navigate to="/dashboard" />}
               </ProtectedRoute>
             } />
             
             <Route path="/admin/users" element={
               <ProtectedRoute user={user}>
-                 {user?.role === UserRole.ADMIN ? <AdminUserManagement /> : <Navigate to="/dashboard" replace />}
+                 {user?.role === UserRole.ADMIN ? <AdminUserManagement /> : <Navigate to="/dashboard" />}
               </ProtectedRoute>
             } />
 

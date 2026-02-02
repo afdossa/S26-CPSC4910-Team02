@@ -1,0 +1,75 @@
+@startuml
+!theme plain
+title Good Driver Incentive Program - Data Flow Diagram
+
+top to bottom direction
+
+rectangle "External Entities" {
+  actor "Driver" as Driver
+  actor "Sponsor" as Sponsor
+  actor "Admin" as Admin
+}
+
+rectangle "Processes" {
+  usecase "1.0 Authentication" as P0
+  usecase "2.0 Manage Profile" as P1
+  usecase "3.0 Process Applications" as P2
+  usecase "4.0 Manage Points" as P3
+  usecase "5.0 Catalog & Redemption" as P4
+  usecase "6.0 Reporting & Auditing" as P5
+}
+
+database "Data Stores" {
+  storage "Users" as D1
+  storage "Sponsors" as D2
+  storage "Applications" as D3
+  storage "Transactions" as D4
+  storage "Products" as D5
+  storage "Audit Logs" as D6
+}
+
+' --- Data Flows ---
+
+' Authentication
+Driver --> P0 : Credentials
+Sponsor --> P0 : Credentials
+Admin --> P0 : Credentials
+P0 --> D1 : Validate User
+P0 --> D6 : Log Login Event
+
+' Profile Management
+Driver --> P1 : Update Info
+P1 --> D1 : Update User Record
+P1 --> D6 : Log Profile Change
+
+' Application Processing
+Driver --> P2 : Submit Application
+Sponsor --> P2 : Review Application (Approve/Reject)
+P2 --> D3 : Create/Update Application
+P2 --> D1 : Update User (Assign Sponsor)
+P2 --> D6 : Log Status Change
+
+' Point Management
+Sponsor --> P3 : Award/Deduct Points
+P3 --> D1 : Update Driver Balance
+P3 --> D4 : Insert Transaction Record
+P3 --> D6 : Log Point Change
+
+' Catalog & Redemption
+Sponsor --> P4 : Manage Products
+P4 --> D5 : CRUD Product
+Driver --> P4 : Browse Catalog
+Driver --> P4 : Purchase Item
+P4 --> D5 : Check Availability
+P4 --> D1 : Deduct Driver Points
+P4 --> D4 : Log Purchase Transaction
+
+' Reporting
+Admin --> P5 : View System Reports
+Sponsor --> P5 : View Org Reports
+P5 <-- D1 : Read Users
+P5 <-- D2 : Read Sponsors
+P5 <-- D4 : Read Point History
+P5 <-- D6 : Read Audit Trails
+
+@enduml
