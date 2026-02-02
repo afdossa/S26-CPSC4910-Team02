@@ -301,7 +301,7 @@ export const getAuditLogs = async (): Promise<AuditLog[]> => {
 }
 
 export const MOCK_ABOUT_DATA: AboutData = {
-  teamNumber: "Team-6",
+  teamNumber: "Team-2",
   versionNumber: "Sprint-2 (AWS Integration)",
   releaseDate: "Spring 2026",
   productName: "Good (Truck) Driver Incentive Program",
