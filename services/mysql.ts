@@ -30,13 +30,25 @@ const loadProdDB = (): ProdDB => {
     return {
         users: [],
         sponsors: [
-            { id: 's1', name: 'FastLane Logistics', pointDollarRatio: 0.01, pointsFloor: 0 },
-            { id: 's2', name: 'Global Freight', pointDollarRatio: 0.015, pointsFloor: 0 }
+            { 
+                id: 's1', 
+                name: 'FastLane Logistics', 
+                pointDollarRatio: 0.01, 
+                pointsFloor: 0,
+                incentiveRules: ["100 pts: Clean roadside inspection"] 
+            },
+            { 
+                id: 's2', 
+                name: 'Global Freight', 
+                pointDollarRatio: 0.015, 
+                pointsFloor: 0,
+                incentiveRules: []
+            }
         ],
         applications: [],
         products: [
-            { id: 'p1', name: 'Wireless Headset', description: 'Noise cancelling headset.', pricePoints: 5000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=10' },
-            { id: 'p2', name: 'Truck GPS', description: 'Advanced routing.', pricePoints: 15000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=11' }
+            { id: 'p1', name: 'Wireless Headset', description: 'Noise cancelling headset.', pricePoints: 5000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=10', createdAt: '2025-01-01' },
+            { id: 'p2', name: 'Truck GPS', description: 'Advanced routing.', pricePoints: 15000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=11', createdAt: '2025-01-15' }
         ],
         transactions: []
     };
@@ -144,6 +156,17 @@ export const apiUpdateSponsorFloor = async (id: string, floor: number) => {
     return false;
 };
 
+export const apiUpdateSponsorRules = async (id: string, rules: string[]) => {
+    const db = loadProdDB();
+    const s = db.sponsors.find(x => x.id === id);
+    if (s) {
+        s.incentiveRules = rules;
+        saveProdDB(db);
+        return true;
+    }
+    return false;
+}
+
 // --- CATALOG ---
 export const apiGetCatalog = async (): Promise<Product[]> => {
     await new Promise(r => setTimeout(r, 200));
@@ -184,7 +207,7 @@ export const apiProcessApplication = async (appId: string, status: string): Prom
 };
 
 // --- POINTS ---
-export const apiUpdateDriverPoints = async (userId: string, amount: number, reason: string, sponsorId: string): Promise<{success: boolean, message: string}> => {
+export const apiUpdateDriverPoints = async (userId: string, amount: number, reason: string, sponsorId: string, type: 'MANUAL' | 'AUTOMATED' | 'PURCHASE' = 'MANUAL'): Promise<{success: boolean, message: string}> => {
     const db = loadProdDB();
     const user = db.users.find(u => u.id === userId);
     
@@ -207,7 +230,8 @@ export const apiUpdateDriverPoints = async (userId: string, amount: number, reas
         date: new Date().toISOString().split('T')[0],
         amount,
         reason,
-        sponsorName: db.sponsors.find(s => s.id === sponsorId)?.name || 'Unknown'
+        sponsorName: db.sponsors.find(s => s.id === sponsorId)?.name || 'Unknown',
+        type: type
     });
 
     saveProdDB(db);

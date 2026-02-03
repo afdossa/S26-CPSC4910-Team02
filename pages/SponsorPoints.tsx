@@ -72,7 +72,8 @@ export const SponsorPoints: React.FC = () => {
                 Number(points), 
                 reason, 
                 currentSponsorName,
-                currentSponsorId
+                currentSponsorId,
+                'MANUAL' // Mark as Manual
             );
 
             if (result.success) {

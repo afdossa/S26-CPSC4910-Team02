@@ -33,6 +33,7 @@ export interface SponsorOrganization {
   name: string;
   pointDollarRatio: number; // e.g., 0.01
   pointsFloor?: number; // Minimum points balance allowed for drivers
+  incentiveRules?: string[]; // Rules visible to drivers
 }
 
 export interface Product {
@@ -42,6 +43,7 @@ export interface Product {
   pricePoints: number;
   imageUrl: string;
   availability: boolean;
+  createdAt?: string; // ISO Date string
 }
 
 export interface AuditLog {
@@ -60,6 +62,7 @@ export interface PointTransaction {
   amount: number;
   reason: string;
   sponsorName: string;
+  type?: 'MANUAL' | 'AUTOMATED' | 'PURCHASE'; 
 }
 
 export interface AboutData {

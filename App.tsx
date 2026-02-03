@@ -1,4 +1,4 @@
-import React, { useState, useEffect, PropsWithChildren } from 'react';
+import React, { useState, useEffect, PropsWithChildren, useCallback } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
 import { Login } from './pages/Login';
@@ -125,9 +125,42 @@ const App: React.FC = () => {
     setUser(loggedInUser);
   };
 
-  const handleLogout = () => {
-    setUser(null);
-  };
+  const handleLogout = useCallback(() => {
+    authService.logout().then(() => {
+        setUser(null);
+    });
+  }, []);
+
+  // --- AUTO LOGOUT ON INACTIVITY ---
+  useEffect(() => {
+      if (!user) return; // Only track if logged in
+
+      const TIMEOUT_MS = 15 * 60 * 1000; // 15 Minutes
+      let timeoutId: any;
+
+      const resetTimer = () => {
+          clearTimeout(timeoutId);
+          timeoutId = setTimeout(() => {
+              alert("You have been logged out due to inactivity for security reasons.");
+              handleLogout();
+          }, TIMEOUT_MS);
+      };
+
+      // Events to track
+      const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
+      
+      // Attach listeners
+      events.forEach(event => window.addEventListener(event, resetTimer));
+      
+      // Start initial timer
+      resetTimer();
+
+      // Cleanup
+      return () => {
+          clearTimeout(timeoutId);
+          events.forEach(event => window.removeEventListener(event, resetTimer));
+      };
+  }, [user, handleLogout]);
 
   const handleExitTestMode = () => {
       if (window.confirm("Switch to Production Mode?\n\nThis will disable all mocks and attempt to connect to real AWS and Firebase services.")) {
