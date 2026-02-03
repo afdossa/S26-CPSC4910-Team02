@@ -1,4 +1,4 @@
-import React, { useState, useEffect, PropsWithChildren } from 'react';
+import React, { useState, useEffect, PropsWithChildren, useCallback } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
 import { Login } from './pages/Login';
@@ -30,7 +30,6 @@ const App: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(true);
   const [testModeActive, setTestModeActive] = useState(isTestMode());
   const [showFlash, setShowFlash] = useState(false);
-  const [configVersion, setConfigVersion] = useState(0); // Used to trigger re-subscription to auth
 
   // Audio Context for Alarm warning
   const playTestModeAlarm = () => {
@@ -64,13 +63,6 @@ const App: React.FC = () => {
     const handleConfigChange = () => {
         const active = isTestMode();
         setTestModeActive(active);
-        
-        // Increment version to force Auth Service re-bind in the other useEffect
-        setConfigVersion(v => v + 1);
-        // Clear current user when switching modes to avoid state pollution
-        setUser(null); 
-        setAuthLoading(true);
-
         if (active) {
             setShowFlash(true);
             playTestModeAlarm();
@@ -100,8 +92,6 @@ const App: React.FC = () => {
       }, 3000);
 
       // Global Auth Listener (Facade)
-      // This will re-run whenever `configVersion` changes, binding to either Real Firebase or Mock Auth
-      console.log("Binding Auth Service Listener (Config Version: " + configVersion + ")");
       const unsubscribe = authService.onStateChange(async (firebaseUser) => {
           if (firebaseUser) {
               // User is signed in, fetch profile data
@@ -129,15 +119,48 @@ const App: React.FC = () => {
           unsubscribe();
           clearTimeout(safetyTimeout);
       };
-  }, [configVersion]); // Dependent on configVersion
+  }, []);
 
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
   };
 
-  const handleLogout = () => {
-    setUser(null);
-  };
+  const handleLogout = useCallback(() => {
+    authService.logout().then(() => {
+        setUser(null);
+    });
+  }, []);
+
+  // --- AUTO LOGOUT ON INACTIVITY ---
+  useEffect(() => {
+      if (!user) return; // Only track if logged in
+
+      const TIMEOUT_MS = 15 * 60 * 1000; // 15 Minutes
+      let timeoutId: any;
+
+      const resetTimer = () => {
+          clearTimeout(timeoutId);
+          timeoutId = setTimeout(() => {
+              alert("You have been logged out due to inactivity for security reasons.");
+              handleLogout();
+          }, TIMEOUT_MS);
+      };
+
+      // Events to track
+      const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
+      
+      // Attach listeners
+      events.forEach(event => window.addEventListener(event, resetTimer));
+      
+      // Start initial timer
+      resetTimer();
+
+      // Cleanup
+      return () => {
+          clearTimeout(timeoutId);
+          events.forEach(event => window.removeEventListener(event, resetTimer));
+      };
+  }, [user, handleLogout]);
 
   const handleExitTestMode = () => {
       if (window.confirm("Switch to Production Mode?\n\nThis will disable all mocks and attempt to connect to real AWS and Firebase services.")) {
@@ -145,7 +168,7 @@ const App: React.FC = () => {
               useMockAuth: false,
               useMockDB: false,
               useMockRedshift: false
-          }, false); // No hard reload
+          }, true); // Force reload
       }
   };
 
@@ -225,45 +248,45 @@ const App: React.FC = () => {
 
             <Route path="/catalog" element={
               <ProtectedRoute user={user}>
-                {user?.role === UserRole.DRIVER ? <Catalog /> : <Navigate to="/dashboard" replace />}
+                {user?.role === UserRole.DRIVER ? <Catalog /> : <Navigate to="/dashboard" />}
               </ProtectedRoute>
             } />
 
             <Route path="/reports" element={
               <ProtectedRoute user={user}>
-                {(user?.role === UserRole.ADMIN || user?.role === UserRole.SPONSOR) ? <Reports /> : <Navigate to="/dashboard" replace />}
+                {(user?.role === UserRole.ADMIN || user?.role === UserRole.SPONSOR) ? <Reports /> : <Navigate to="/dashboard" />}
               </ProtectedRoute>
             } />
 
             {/* Sponsor Specific Routes */}
             <Route path="/sponsor/applications" element={
               <ProtectedRoute user={user}>
-                {user?.role === UserRole.SPONSOR ? <SponsorApplications /> : <Navigate to="/dashboard" replace />}
+                {user?.role === UserRole.SPONSOR ? <SponsorApplications /> : <Navigate to="/dashboard" />}
               </ProtectedRoute>
             } />
             
             <Route path="/sponsor/points" element={
               <ProtectedRoute user={user}>
-                 {user?.role === UserRole.SPONSOR ? <SponsorPoints /> : <Navigate to="/dashboard" replace />}
+                 {user?.role === UserRole.SPONSOR ? <SponsorPoints /> : <Navigate to="/dashboard" />}
               </ProtectedRoute>
             } />
 
             <Route path="/sponsor/catalog" element={
                <ProtectedRoute user={user}>
-                 {user?.role === UserRole.SPONSOR ? <SponsorCatalog /> : <Navigate to="/dashboard" replace />}
+                 {user?.role === UserRole.SPONSOR ? <SponsorCatalog /> : <Navigate to="/dashboard" />}
                </ProtectedRoute>
             } />
 
             {/* Admin Specific Routes */}
             <Route path="/admin/sponsors" element={
               <ProtectedRoute user={user}>
-                 {user?.role === UserRole.ADMIN ? <AdminSponsors /> : <Navigate to="/dashboard" replace />}
+                 {user?.role === UserRole.ADMIN ? <AdminSponsors /> : <Navigate to="/dashboard" />}
               </ProtectedRoute>
             } />
             
             <Route path="/admin/users" element={
               <ProtectedRoute user={user}>
-                 {user?.role === UserRole.ADMIN ? <AdminUserManagement /> : <Navigate to="/dashboard" replace />}
+                 {user?.role === UserRole.ADMIN ? <AdminUserManagement /> : <Navigate to="/dashboard" />}
               </ProtectedRoute>
             } />
 
@@ -273,7 +296,7 @@ const App: React.FC = () => {
         <footer className="bg-white border-t border-gray-200">
           <div className="max-w-7xl mx-auto py-6 px-4 overflow-hidden sm:px-6 lg:px-8">
             <p className="mt-1 text-center text-sm text-gray-400">
-              &copy; 2026 Good Driver Incentive Program. Team 6. AWS Powered.
+              &copy; 2026 Good Driver Incentive Program. Team 2. AWS Powered.
             </p>
           </div>
         </footer>

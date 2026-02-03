@@ -32,17 +32,36 @@ const persistMock = (key: string, data: any) => localStorage.setItem(key, JSON.s
 
 // --- MOCK SEED DATA (Kept for Test Mode) ---
 const SEED_USERS: User[] = [
-  { id: 'u1', username: 'driver1', role: UserRole.DRIVER, fullName: 'John Trucker', email: 'john.trucker@example.com', phoneNumber: '555-0101', address: '123 Haul St', sponsorId: 's1', pointsBalance: 5400, avatarUrl: 'https://picsum.photos/200/200?random=1' },
-  { id: 'u2', username: 'sponsor1', role: UserRole.SPONSOR, fullName: 'Alice Logistics', email: 'alice@fastlane.com', sponsorId: 's1', avatarUrl: 'https://picsum.photos/200/200?random=2' },
-  { id: 'u3', username: 'admin', role: UserRole.ADMIN, fullName: 'System Admin', email: 'admin@system.com', avatarUrl: 'https://picsum.photos/200/200?random=3' }
+  { id: 'u1', username: 'driver1', role: UserRole.DRIVER, fullName: 'John Trucker', email: 'john.trucker@example.com', phoneNumber: '555-0101', address: '123 Haul St', sponsorId: 's1', pointsBalance: 5400, avatarUrl: 'https://picsum.photos/200/200?random=1', preferences: { alertsEnabled: true } },
+  { id: 'u2', username: 'sponsor1', role: UserRole.SPONSOR, fullName: 'Alice Logistics', email: 'alice@fastlane.com', sponsorId: 's1', avatarUrl: 'https://picsum.photos/200/200?random=2', preferences: { alertsEnabled: true } },
+  { id: 'u3', username: 'admin', role: UserRole.ADMIN, fullName: 'System Admin', email: 'admin@system.com', avatarUrl: 'https://picsum.photos/200/200?random=3', preferences: { alertsEnabled: true } }
 ];
 const SEED_SPONSORS: SponsorOrganization[] = [
-  { id: 's1', name: 'FastLane Logistics', pointDollarRatio: 0.01, pointsFloor: 0 },
-  { id: 's2', name: 'Global Freight', pointDollarRatio: 0.015, pointsFloor: 0 }
+  { 
+      id: 's1', 
+      name: 'FastLane Logistics', 
+      pointDollarRatio: 0.01, 
+      pointsFloor: 0,
+      incentiveRules: [
+          "100 pts: Clean roadside inspection",
+          "500 pts: 10,000 miles accident-free",
+          "50 pts: On-time delivery streak (5 loads)"
+      ]
+  },
+  { 
+      id: 's2', 
+      name: 'Global Freight', 
+      pointDollarRatio: 0.015, 
+      pointsFloor: 0,
+      incentiveRules: [
+          "1000 pts: Employee of the month",
+          "200 pts: Passing quarterly safety quiz"
+      ]
+  }
 ];
 const SEED_CATALOG: Product[] = [
-  { id: 'p1', name: 'Wireless Headset', description: 'Noise cancelling headset.', pricePoints: 5000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=10' },
-  { id: 'p2', name: 'Truck GPS', description: 'Advanced routing.', pricePoints: 15000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=11' }
+  { id: 'p1', name: 'Wireless Headset', description: 'Noise cancelling headset.', pricePoints: 5000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=10', createdAt: '2025-01-01' },
+  { id: 'p2', name: 'Truck GPS', description: 'Advanced routing.', pricePoints: 15000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=11', createdAt: '2025-01-15' }
 ];
 
 const SEED_APPLICATIONS: DriverApplication[] = [
@@ -84,12 +103,27 @@ export const getUserProfile = async (uid: string): Promise<User | undefined> => 
     return await MySQL.apiGetUserProfile(uid);
 };
 
+export const updateUserPreferences = async (userId: string, prefs: { alertsEnabled: boolean }) => {
+    if (useMockDB()) {
+        const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
+        const user = users.find(u => u.id === userId);
+        if (user) {
+            user.preferences = { ...(user.preferences || { alertsEnabled: true }), ...prefs };
+            persistMock(DB_KEYS.USERS, users);
+            return true;
+        }
+        return false;
+    }
+    return await MySQL.apiUpdateUserPreferences(userId, prefs);
+};
+
 export const createProfile = async (uid: string, username: string, fullName: string, role: UserRole, additionalInfo?: { email: string, phone: string, address: string }) => {
     const newUser: User = {
         id: uid, username, fullName, role,
         email: additionalInfo?.email, phoneNumber: additionalInfo?.phone, address: additionalInfo?.address,
         avatarUrl: `https://picsum.photos/200/200?random=${Date.now()}`,
-        pointsBalance: role === UserRole.DRIVER ? 0 : undefined
+        pointsBalance: role === UserRole.DRIVER ? 0 : undefined,
+        preferences: { alertsEnabled: true }
     };
 
     if (useMockDB()) {
@@ -112,7 +146,8 @@ export const createUser = async (username: string, fullName: string, role: UserR
             id: `local_${Date.now()}`, username, fullName, role,
             email: additionalInfo?.email, phoneNumber: additionalInfo?.phone,
             avatarUrl: `https://picsum.photos/200/200?random=${Date.now()}`,
-            pointsBalance: role === UserRole.DRIVER ? 0 : undefined
+            pointsBalance: role === UserRole.DRIVER ? 0 : undefined,
+            preferences: { alertsEnabled: true }
         };
         users.push(newUser);
         persistMock(DB_KEYS.USERS, users);
@@ -161,7 +196,7 @@ export const getSponsor = (id: string): SponsorOrganization | undefined => {
 export const addSponsor = async (name: string, ratio: number) => {
     if (useMockDB()) {
         const sponsors: SponsorOrganization[] = loadMock(DB_KEYS.SPONSORS, SEED_SPONSORS);
-        sponsors.push({ id: `s${Date.now()}`, name, pointDollarRatio: ratio, pointsFloor: 0 });
+        sponsors.push({ id: `s${Date.now()}`, name, pointDollarRatio: ratio, pointsFloor: 0, incentiveRules: [] });
         persistMock(DB_KEYS.SPONSORS, sponsors);
         return;
     }
@@ -181,6 +216,20 @@ export const updateSponsorFloor = async (sponsorId: string, newFloor: number) =>
     }
     return await MySQL.apiUpdateSponsorFloor(sponsorId, newFloor);
 };
+
+export const updateSponsorRules = async (sponsorId: string, rules: string[]) => {
+    if (useMockDB()) {
+        const sponsors: SponsorOrganization[] = loadMock(DB_KEYS.SPONSORS, SEED_SPONSORS);
+        const s = sponsors.find(x => x.id === sponsorId);
+        if (s) {
+            s.incentiveRules = rules;
+            persistMock(DB_KEYS.SPONSORS, sponsors);
+            return true;
+        }
+        return false;
+    }
+    return await MySQL.apiUpdateSponsorRules(sponsorId, rules);
+}
 
 // Applications
 export const submitApplication = async (userId: string, sponsorId: string, details: any) => {
@@ -249,7 +298,7 @@ export const processApplication = async (appId: string, approved: boolean) => {
 };
 
 // Points
-export const updateDriverPoints = async (driverId: string, amount: number, reason: string, sponsorName: string, sponsorId?: string) => {
+export const updateDriverPoints = async (driverId: string, amount: number, reason: string, sponsorName: string, sponsorId?: string, type: 'MANUAL' | 'AUTOMATED' | 'PURCHASE' = 'MANUAL') => {
     if (useMockDB()) {
         const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
         const user = users.find(u => u.id === driverId);
@@ -265,7 +314,14 @@ export const updateDriverPoints = async (driverId: string, amount: number, reaso
              user.pointsBalance += amount;
              
              const txs: PointTransaction[] = loadMock(DB_KEYS.TX, []);
-             txs.unshift({ id: `t${Date.now()}`, date: new Date().toISOString().split('T')[0], amount, reason, sponsorName });
+             txs.unshift({ 
+                 id: `t${Date.now()}`, 
+                 date: new Date().toISOString().split('T')[0], 
+                 amount, 
+                 reason, 
+                 sponsorName, 
+                 type: type 
+             });
              
              persistMock(DB_KEYS.USERS, users);
              persistMock(DB_KEYS.TX, txs);
@@ -273,11 +329,11 @@ export const updateDriverPoints = async (driverId: string, amount: number, reaso
         }
         return { success: false, message: "User not found" };
     }
-    return await MySQL.apiUpdateDriverPoints(driverId, amount, reason, sponsorId || '');
+    return await MySQL.apiUpdateDriverPoints(driverId, amount, reason, sponsorId || '', type);
 };
 
 export const getTransactions = async (): Promise<PointTransaction[]> => {
-    if (useMockDB()) return loadMock(DB_KEYS.TX, [{ id: 't1', date: '2026-01-15', amount: 500, reason: 'Safe Driving Bonus', sponsorName: 'FastLane Logistics' }]);
+    if (useMockDB()) return loadMock(DB_KEYS.TX, [{ id: 't1', date: '2026-01-15', amount: 500, reason: 'Safe Driving Bonus', sponsorName: 'FastLane Logistics', type: 'MANUAL' }]);
     return await MySQL.apiGetTransactions();
 };
 
@@ -286,7 +342,32 @@ export const getCatalog = async (): Promise<Product[]> => {
     return await MySQL.apiGetCatalog();
 };
 
-export const MOCK_USERS_SYNC = SEED_USERS; // Legacy export for sync filters if absolutely needed, but better to use getAllUsers
+export const addProduct = async (product: Partial<Product>) => {
+    if(useMockDB()) {
+        const products = loadMock(DB_KEYS.CATALOG, SEED_CATALOG);
+        products.push({
+            id: `p${Date.now()}`,
+            name: product.name || 'New Product',
+            description: product.description || '',
+            pricePoints: product.pricePoints || 0,
+            availability: product.availability ?? true,
+            imageUrl: product.imageUrl || 'https://via.placeholder.com/150',
+            createdAt: new Date().toISOString()
+        });
+        persistMock(DB_KEYS.CATALOG, products);
+    }
+    // Prod not implemented for this action
+}
+
+export const deleteProduct = async (id: string) => {
+    if(useMockDB()) {
+        let products = loadMock(DB_KEYS.CATALOG, SEED_CATALOG);
+        products = products.filter(p => p.id !== id);
+        persistMock(DB_KEYS.CATALOG, products);
+    }
+}
+
+export const MOCK_USERS_SYNC = SEED_USERS; 
 
 // Helpers
 const _addMockLog = (action: string, actor: string, target: string, details: string, category: AuditLog['category']) => {
@@ -301,7 +382,7 @@ export const getAuditLogs = async (): Promise<AuditLog[]> => {
 }
 
 export const MOCK_ABOUT_DATA: AboutData = {
-  teamNumber: "Team-6",
+  teamNumber: "Team-2",
   versionNumber: "Sprint-2 (AWS Integration)",
   releaseDate: "Spring 2026",
   productName: "Good (Truck) Driver Incentive Program",
