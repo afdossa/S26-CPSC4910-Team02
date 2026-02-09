@@ -6,12 +6,13 @@ import { About } from './pages/About';
 import { Dashboard } from './pages/Dashboard';
 import { Catalog } from './pages/Catalog';
 import { Reports } from './pages/Reports';
+import { Profile } from './pages/Profile';
 import { SponsorApplications } from './pages/SponsorApplications';
 import { SponsorPoints } from './pages/SponsorPoints';
 import { SponsorCatalog } from './pages/SponsorCatalog';
 import { AdminSponsors } from './pages/AdminSponsors';
 import { AdminUserManagement } from './pages/AdminUserManagement';
-import { User, UserRole } from './types';
+import { User, UserRole, Product, CartItem } from './types';
 import { authService } from './services/auth';
 import { getUserProfile } from './services/mockData';
 import { isTestMode, updateConfig } from './services/config';
@@ -30,33 +31,55 @@ const App: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(true);
   const [testModeActive, setTestModeActive] = useState(isTestMode());
   const [showFlash, setShowFlash] = useState(false);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  
+  // Theme State
+  const [isDark, setIsDark] = useState(() => {
+      // Check local storage or system preference
+      if (typeof window !== 'undefined') {
+          const stored = localStorage.getItem('theme');
+          if (stored) return stored === 'dark';
+          return window.matchMedia('(prefers-color-scheme: dark)').matches;
+      }
+      return false;
+  });
 
-  // Audio Context for Alarm warning
-  const playTestModeAlarm = () => {
-    try {
-        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioContext) return;
-        
-        const ctx = new AudioContext();
-        const oscillator = ctx.createOscillator();
-        const gainNode = ctx.createGain();
+  // Apply Theme Effect
+  useEffect(() => {
+      if (isDark) {
+          document.documentElement.classList.add('dark');
+          localStorage.setItem('theme', 'dark');
+      } else {
+          document.documentElement.classList.remove('dark');
+          localStorage.setItem('theme', 'light');
+      }
+  }, [isDark]);
 
-        oscillator.type = 'sawtooth';
-        oscillator.frequency.setValueAtTime(440, ctx.currentTime); // A4
-        oscillator.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1); // Sweep up
+  const toggleTheme = () => setIsDark(!isDark);
 
-        gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-
-        oscillator.connect(gainNode);
-        gainNode.connect(ctx.destination);
-
-        oscillator.start();
-        oscillator.stop(ctx.currentTime + 0.5);
-    } catch (e) {
-        console.error("Audio playback failed", e);
-    }
+  const addToCart = (product: Product) => {
+    setCart(prev => {
+      const existing = prev.find(item => item.id === product.id);
+      if (existing) {
+        return prev.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
+      }
+      return [...prev, { ...product, quantity: 1 }];
+    });
   };
+
+  const removeFromCart = (productId: string) => {
+    setCart(prev => prev.filter(item => item.id !== productId));
+  };
+
+  const updateCartQuantity = (productId: string, quantity: number) => {
+    if (quantity <= 0) {
+      removeFromCart(productId);
+      return;
+    }
+    setCart(prev => prev.map(item => item.id === productId ? { ...item, quantity } : item));
+  };
+
+  const clearCart = () => setCart([]);
 
   useEffect(() => {
     // Listener for test mode changes
@@ -65,7 +88,6 @@ const App: React.FC = () => {
         setTestModeActive(active);
         if (active) {
             setShowFlash(true);
-            playTestModeAlarm();
             setTimeout(() => setShowFlash(false), 3000);
         }
     };
@@ -92,6 +114,8 @@ const App: React.FC = () => {
       }, 3000);
 
       // Global Auth Listener (Facade)
+      // IMPORTANT: We depend on `testModeActive` so that we unsubscribe/resubscribe 
+      // to the correct auth provider when the toggle switches.
       const unsubscribe = authService.onStateChange(async (firebaseUser) => {
           if (firebaseUser) {
               // User is signed in, fetch profile data
@@ -119,7 +143,7 @@ const App: React.FC = () => {
           unsubscribe();
           clearTimeout(safetyTimeout);
       };
-  }, []);
+  }, [testModeActive]); // Re-run when test mode changes
 
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
@@ -128,6 +152,7 @@ const App: React.FC = () => {
   const handleLogout = useCallback(() => {
     authService.logout().then(() => {
         setUser(null);
+        clearCart();
     });
   }, []);
 
@@ -168,15 +193,16 @@ const App: React.FC = () => {
               useMockAuth: false,
               useMockDB: false,
               useMockRedshift: false
-          }, true); // Force reload
+          }, false); 
+          // Note: We don't force reload here anymore, we rely on the reactive useEffect
       }
   };
 
   if (authLoading) {
       return (
-          <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+          <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-900 transition-colors">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-              <p className="text-gray-500 text-sm">Initializing Services...</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Initializing Services...</p>
               {!testModeActive && (
                   <p className="text-xs text-red-400 mt-2">Connecting to Real Firebase...</p>
               )}
@@ -186,7 +212,7 @@ const App: React.FC = () => {
 
   return (
     <Router>
-      <div className={`min-h-screen flex flex-col font-sans transition-all duration-300 ${testModeActive ? 'border-4 border-red-600' : ''}`}>
+      <div className={`min-h-screen flex flex-col font-sans transition-all duration-300 ${testModeActive ? 'border-4 border-red-600' : ''} dark:bg-slate-900 dark:text-slate-100`}>
         
         {/* Test Mode Flash Message */}
         {showFlash && (
@@ -212,24 +238,24 @@ const App: React.FC = () => {
             </div>
         )}
 
-        <Navbar user={user} onLogout={handleLogout} />
+        <Navbar user={user} onLogout={handleLogout} isDark={isDark} toggleTheme={toggleTheme} />
         
         <main className="flex-grow">
           <Routes>
             <Route path="/" element={
               user ? <Navigate to="/dashboard" replace /> : 
               <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8 text-center">
-                  <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight sm:text-5xl md:text-6xl">
+                  <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight sm:text-5xl md:text-6xl">
                       <span className="block xl:inline">Drive Safe.</span>{' '}
-                      <span className="block text-blue-600 xl:inline">Earn Rewards.</span>
+                      <span className="block text-blue-600 dark:text-blue-400 xl:inline">Earn Rewards.</span>
                   </h1>
-                  <p className="mt-3 max-w-md mx-auto text-base text-gray-500 sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
+                  <p className="mt-3 max-w-md mx-auto text-base text-gray-500 dark:text-gray-400 sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
                       The industry standard for incentivizing trucking excellence. 
                       Drivers earn points for safety and efficiency, redeemable for real-world rewards.
                   </p>
                   <div className="mt-5 max-w-md mx-auto sm:flex sm:justify-center md:mt-8">
                       <div className="rounded-md shadow">
-                          <Link to="/login" className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 md:py-4 md:text-lg md:px-10">
+                          <Link to="/login" className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 md:py-4 md:text-lg md:px-10 shadow-lg shadow-blue-500/30">
                               Get Started
                           </Link>
                       </div>
@@ -246,9 +272,27 @@ const App: React.FC = () => {
               </ProtectedRoute>
             } />
 
+            <Route path="/profile" element={
+              <ProtectedRoute user={user}>
+                <Profile user={user!} onUpdate={(updated) => setUser(updated)} />
+              </ProtectedRoute>
+            } />
+
             <Route path="/catalog" element={
               <ProtectedRoute user={user}>
-                {user?.role === UserRole.DRIVER ? <Catalog /> : <Navigate to="/dashboard" />}
+                {user?.role === UserRole.DRIVER ? (
+                  <Catalog 
+                    user={user!} 
+                    cart={cart}
+                    addToCart={addToCart} 
+                    updateQuantity={updateCartQuantity}
+                    removeItem={removeFromCart}
+                    clearCart={clearCart}
+                    onPurchaseSuccess={(points) => {
+                      if (user) setUser({ ...user, pointsBalance: (user.pointsBalance || 0) - points });
+                    }}
+                  />
+                ) : <Navigate to="/dashboard" />}
               </ProtectedRoute>
             } />
 
@@ -293,9 +337,9 @@ const App: React.FC = () => {
           </Routes>
         </main>
 
-        <footer className="bg-white border-t border-gray-200">
+        <footer className="bg-white dark:bg-slate-800 border-t border-gray-200 dark:border-slate-700 transition-colors duration-200">
           <div className="max-w-7xl mx-auto py-6 px-4 overflow-hidden sm:px-6 lg:px-8">
-            <p className="mt-1 text-center text-sm text-gray-400">
+            <p className="mt-1 text-center text-sm text-gray-400 dark:text-gray-500">
               &copy; 2026 Good Driver Incentive Program. Team 2. AWS Powered.
             </p>
           </div>

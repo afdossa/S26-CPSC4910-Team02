@@ -1,27 +1,33 @@
-import React, { useState, useEffect } from 'react';
-import { User, UserRole, DriverApplication, SponsorOrganization, PointTransaction } from '../types';
-import { submitApplication, getDriverApplication, getSponsors, getTransactions, updateUserPreferences, getUserProfile, getCatalog, updateSponsorRules } from '../services/mockData';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { User, UserRole, DriverApplication, SponsorOrganization, PointTransaction, Notification, CartItem } from '../types';
+import { submitApplication, getDriverApplication, getSponsors, getTransactions, updateUserPreferences, getUserProfile, getCatalog, updateSponsorRules, getNotifications, markNotificationAsRead } from '../services/mockData';
 import { triggerRedshiftArchive } from '../services/mysql';
 import { getConfig, updateConfig, isTestMode } from '../services/config';
-import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X, DollarSign, RefreshCw, User as UserIcon, Receipt, Package, Inbox, Calendar, Settings } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
   user: User;
 }
 
 const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  const [activeTab, setActiveTab] = useState<'overview' | 'notifications'>('overview');
   const [pendingApp, setPendingApp] = useState<DriverApplication | undefined>(undefined);
   const [sponsors, setSponsors] = useState<SponsorOrganization[]>([]);
   const [transactions, setTransactions] = useState<PointTransaction[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newCatalogItems, setNewCatalogItems] = useState(0);
   const [activeSponsor, setActiveSponsor] = useState<SponsorOrganization | undefined>(undefined);
+  const [showAsDollars, setShowAsDollars] = useState(false);
   
   // Application Form State
   const [sponsorId, setSponsorId] = useState('');
   const [license, setLicense] = useState('');
-  const [experience, setExperience] = useState(''); // Text state for better UX
+  const [experience, setExperience] = useState(''); 
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -31,50 +37,57 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
   // Filter State
   const [historyFilter, setHistoryFilter] = useState<'ALL' | 'MANUAL' | 'PURCHASE'>('ALL');
 
-  useEffect(() => {
-    const loadData = async () => {
-        setLoading(true);
-        try {
-            const [app, spList, txList, freshUser, products] = await Promise.all([
-                getDriverApplication(user.id),
-                getSponsors(),
-                getTransactions(), // In real app, filter by user.id
-                getUserProfile(user.id),
-                getCatalog()
-            ]);
-            setPendingApp(app);
-            setSponsors(spList);
-            setTransactions(txList);
-            
-            if (freshUser && freshUser.preferences) {
-                setAlertsEnabled(freshUser.preferences.alertsEnabled);
-            }
-            if (spList.length > 0) setSponsorId(spList[0].id);
-
-            // Find Active Sponsor
-            if (freshUser?.sponsorId) {
-                setActiveSponsor(spList.find(s => s.id === freshUser.sponsorId));
-            }
-
-            // Check for new products (last 7 days)
-            const oneWeekAgo = new Date();
-            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-            const newCount = products.filter(p => p.createdAt && new Date(p.createdAt) > oneWeekAgo).length;
-            setNewCatalogItems(newCount);
-
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+        const [app, spList, txList, freshUser, products, notifList] = await Promise.all([
+            getDriverApplication(user.id),
+            getSponsors(),
+            getTransactions(), 
+            getUserProfile(user.id),
+            getCatalog(),
+            getNotifications(user.id)
+        ]);
+        setPendingApp(app);
+        setSponsors(spList);
+        setTransactions(txList);
+        setNotifications(notifList);
+        
+        if (freshUser && freshUser.preferences) {
+            setAlertsEnabled(freshUser.preferences.alertsEnabled);
         }
-    };
+        if (spList.length > 0) setSponsorId(spList[0].id);
+
+        if (freshUser?.sponsorId) {
+            setActiveSponsor(spList.find(s => s.id === freshUser.sponsorId));
+        }
+    } catch (e) {
+        console.error(e);
+    } finally {
+        setLoading(false);
+    }
+  }, [user.id]);
+
+  useEffect(() => {
     loadData();
-  }, [user.id, user.sponsorId]);
+    const handleRefresh = () => loadData();
+    window.addEventListener('notification-added', handleRefresh);
+    return () => window.removeEventListener('notification-added', handleRefresh);
+  }, [loadData]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab === 'notifications') {
+        setActiveTab('notifications');
+    } else {
+        setActiveTab('overview');
+    }
+  }, [location.search]);
 
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    // Convert experience string back to number for submission
     if (await submitApplication(user.id, sponsorId, { licenseNumber: license, experienceYears: Number(experience), reason })) {
        const app = await getDriverApplication(user.id);
        setPendingApp(app);
@@ -97,9 +110,19 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
       return true;
   });
 
+  const getPointsValueUSD = () => {
+    const ratio = activeSponsor?.pointDollarRatio || 0.01;
+    const value = (user.pointsBalance || 0) * ratio;
+    return value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  };
+
+  const handleReadNotification = async (id: string) => {
+      await markNotificationAsRead(id);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+  };
+
   if (loading) return <div className="p-10 text-center">Loading dashboard data...</div>;
 
-  // Case 1: No Sponsor AND No Pending Application -> Show Application Form
   if (!user.sponsorId && !pendingApp) {
       return (
           <div className="max-w-2xl mx-auto space-y-6">
@@ -179,7 +202,6 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
       );
   }
 
-  // Case 2: Show Dashboard (Active or Pending)
   const isPending = !user.sponsorId && !!pendingApp;
   const displaySponsorName = isPending 
       ? sponsors.find(s => s.id === pendingApp?.sponsorId)?.name 
@@ -187,214 +209,303 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
 
   return (
     <div className="space-y-6">
-      {/* Notifications */}
-      {isPending && (
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-              <div className="flex">
-                  <div className="flex-shrink-0">
-                      <Clock className="h-5 w-5 text-yellow-400" aria-hidden="true" />
-                  </div>
-                  <div className="ml-3">
-                      <p className="text-sm text-yellow-700">
-                          <span className="font-bold">Application Pending:</span> Waiting for acceptance from <span className="font-bold">{displaySponsorName}</span>. 
-                          <br/>
-                          You will be notified once you are confirmed. Your dashboard features are currently in preview mode.
-                      </p>
-                  </div>
-              </div>
-          </div>
-      )}
+      <div className="flex border-b border-gray-200">
+          <button 
+            onClick={() => { setActiveTab('overview'); navigate('/dashboard'); }}
+            className={`px-6 py-3 text-sm font-bold uppercase tracking-wider border-b-2 transition-all ${activeTab === 'overview' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+              Overview
+          </button>
+          <button 
+            onClick={() => { setActiveTab('notifications'); navigate('/dashboard?tab=notifications'); }}
+            className={`px-6 py-3 text-sm font-bold uppercase tracking-wider border-b-2 transition-all flex items-center ${activeTab === 'notifications' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+              Notifications
+              {notifications.filter(n => !n.isRead).length > 0 && (
+                  <span className="ml-2 h-5 w-5 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full animate-pulse">
+                      {notifications.filter(n => !n.isRead).length}
+                  </span>
+              )}
+          </button>
+      </div>
 
-      {newCatalogItems > 0 && alertsEnabled && !isPending && (
-          <div className="bg-blue-50 border-l-4 border-blue-400 p-4 flex justify-between items-start">
-             <div className="flex">
-                 <div className="flex-shrink-0">
-                     <Info className="h-5 w-5 text-blue-400" aria-hidden="true" />
-                 </div>
-                 <div className="ml-3">
-                     <p className="text-sm text-blue-700">
-                         <span className="font-bold">New Rewards Available!</span> {newCatalogItems} new items have been added to the catalog recently.
-                     </p>
-                     <Link to="/catalog" className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-500 inline-block">View Catalog &rarr;</Link>
-                 </div>
-             </div>
-             <button onClick={() => setNewCatalogItems(0)} className="text-blue-400 hover:text-blue-500">
-                 <X className="w-5 h-5" />
-             </button>
-         </div>
-      )}
-
-      {/* Grid for Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Driver Stats Card */}
-          <div className="bg-white overflow-hidden shadow rounded-lg col-span-1 lg:col-span-2">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <ShieldCheck className="h-10 w-10 text-green-500" aria-hidden="true" />
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate flex items-center">
-                        Current Points Balance
-                        {!isPending && (user.pointsBalance || 0) > 1000 && (
-                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                <CheckCircle className="w-3 h-3 mr-1" /> Good Driver
-                            </span>
-                        )}
-                    </dt>
-                    <dd>
-                      <div className="text-3xl font-bold text-gray-900">
-                          {isPending ? 'N/A' : user.pointsBalance?.toLocaleString()}
-                      </div>
-                    </dd>
-                    <dt className="text-xs text-gray-400 mt-1">Sponsor: {displaySponsorName} {isPending ? '(Pending)' : ''}</dt>
-                  </dl>
-
-                  {!isPending && (
-                    <div className="mt-3">
-                        <div className="flex justify-between text-xs text-gray-400 mb-1">
-                            <span>Reward Tier Progress</span>
-                            <span>5,000 pts</span>
+      {activeTab === 'overview' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            {isPending && (
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                    <div className="flex">
+                        <div className="flex-shrink-0">
+                            <Clock className="h-5 w-5 text-yellow-400" aria-hidden="true" />
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-1.5">
-                            <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: `${Math.min(((user.pointsBalance || 0) / 5000) * 100, 100)}%` }}></div>
+                        <div className="ml-3">
+                            <p className="text-sm text-yellow-700">
+                                <span className="font-bold">Application Pending:</span> Waiting for acceptance from <span className="font-bold">{displaySponsorName}</span>. 
+                            </p>
                         </div>
                     </div>
-                  )}
                 </div>
-                <div className="ml-5">
-                    {isPending ? (
-                        <button disabled className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-100 cursor-not-allowed">
-                            Redeem Points
-                        </button>
-                    ) : (
-                        <Link to="/catalog" className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
-                            Redeem Points
-                        </Link>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white overflow-hidden shadow rounded-2xl col-span-1 lg:col-span-2 border border-gray-100">
+                    <div className="p-6">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                            <div className="flex-shrink-0 bg-green-50 p-3 rounded-2xl">
+                                <ShieldCheck className="h-10 w-10 text-green-600" aria-hidden="true" />
+                            </div>
+                            <div className="ml-5">
+                                <dl>
+                                    <dt className="text-sm font-bold text-gray-400 uppercase tracking-widest">
+                                        Current Balance
+                                    </dt>
+                                    <dd>
+                                        <div className="text-4xl font-black text-gray-900 flex items-center">
+                                            {isPending ? 'N/A' : (
+                                                showAsDollars ? (
+                                                    <>
+                                                        <DollarSign className="w-7 h-7 text-green-600 mr-1" />
+                                                        {getPointsValueUSD().replace('$', '')}
+                                                    </>
+                                                ) : (
+                                                    user.pointsBalance?.toLocaleString() + ' pts'
+                                                )
+                                            )}
+                                        </div>
+                                    </dd>
+                                    <dt className="text-xs font-medium text-gray-500 mt-1">
+                                        Sponsor: <span className="font-bold text-gray-700">{displaySponsorName}</span> {isPending ? '(Pending)' : ''}
+                                    </dt>
+                                </dl>
+                            </div>
+                        </div>
+                        
+                        <div className="flex flex-col space-y-3 items-end">
+                            {!isPending && (
+                                <>
+                                    <button 
+                                        onClick={() => setShowAsDollars(!showAsDollars)}
+                                        className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 transition-all hover:shadow-sm"
+                                    >
+                                        <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                                        {showAsDollars ? 'View Points' : 'View Dollars'}
+                                    </button>
+                                    <Link 
+                                        to="/catalog" 
+                                        className="inline-flex items-center px-6 py-2.5 border border-transparent text-sm font-black rounded-xl shadow-lg shadow-blue-100 text-white bg-blue-600 hover:bg-blue-700 transition-all active:scale-95"
+                                    >
+                                        Redeem Points
+                                    </Link>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                {!isPending && activeSponsor && (
+                    <div className="bg-white overflow-hidden shadow rounded-2xl border border-gray-100 lg:col-span-2">
+                        <div className="px-6 py-5">
+                            <div className="flex items-center mb-4">
+                                <Info className="h-5 w-5 text-blue-500 mr-2" />
+                                <h3 className="text-lg leading-6 font-bold text-gray-900">How to Earn Points</h3>
+                            </div>
+                            <div className="prose prose-sm text-gray-500">
+                                {activeSponsor.incentiveRules && activeSponsor.incentiveRules.length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {activeSponsor.incentiveRules.map((rule, idx) => (
+                                            <div key={idx} className="flex items-center p-3 bg-gray-50 rounded-xl text-gray-700 font-medium border border-transparent hover:border-blue-100 transition-colors">
+                                                <div className="h-2 w-2 bg-blue-500 rounded-full mr-3"></div>
+                                                {rule}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="italic">No specific rules listed by sponsor.</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <div className="bg-white shadow overflow-hidden sm:rounded-2xl border border-gray-100">
+                <div className="px-6 py-5 flex flex-col sm:flex-row justify-between items-center bg-gray-50 border-b border-gray-100">
+                    <div>
+                        <h3 className="text-lg leading-6 font-bold text-gray-900 flex items-center">
+                            <Receipt className="w-5 h-5 mr-2 text-gray-400" />
+                            Recent Activity
+                        </h3>
+                    </div>
+                    {!isPending && (
+                        <div className="mt-4 sm:mt-0 flex items-center space-x-2">
+                            <Filter className="w-4 h-4 text-gray-400" />
+                            <select 
+                                value={historyFilter} 
+                                onChange={(e) => setHistoryFilter(e.target.value as any)}
+                                className="text-xs font-bold border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white py-1 px-2"
+                            >
+                                <option value="ALL">All Activity</option>
+                                <option value="MANUAL">Awards Only</option>
+                                <option value="PURCHASE">Redemptions</option>
+                            </select>
+                        </div>
                     )}
                 </div>
-              </div>
+                <ul className="divide-y divide-gray-100">
+                    {!isPending && filteredTransactions.map((t) => (
+                        <li key={t.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
+                            <div className="flex items-center justify-between">
+                                <div className="flex flex-col">
+                                    <p className="text-sm font-bold text-gray-900">{t.reason}</p>
+                                    <div className="flex items-center space-x-2 mt-1">
+                                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{t.sponsorName}</span>
+                                        {t.type && (
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter
+                                                ${t.type === 'MANUAL' ? 'bg-purple-100 text-purple-700' : 
+                                                t.type === 'PURCHASE' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+                                                {t.type}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col items-end">
+                                    <div className={`flex items-center text-sm font-black ${t.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {t.amount > 0 ? <TrendingUp className="w-4 h-4 mr-1"/> : <TrendingDown className="w-4 h-4 mr-1"/>}
+                                        {t.amount > 0 ? '+' : ''}{t.amount.toLocaleString()}
+                                    </div>
+                                    <div className="flex items-center text-[10px] text-gray-400 font-bold mt-1">
+                                        <Clock className="flex-shrink-0 mr-1 h-3 w-3" />
+                                        {t.date}
+                                    </div>
+                                </div>
+                            </div>
+                        </li>
+                    ))}
+                    {(filteredTransactions.length === 0 || isPending) && (
+                        <li className="px-4 py-12 text-sm text-gray-400 text-center italic">
+                            No transactions recorded yet.
+                        </li>
+                    )}
+                </ul>
             </div>
           </div>
+      )}
 
-          {/* Preferences Card */}
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                  <div className="flex items-center mb-4">
-                      <Bell className="h-5 w-5 text-gray-400 mr-2" />
-                      <h3 className="text-lg leading-6 font-medium text-gray-900">Preferences</h3>
-                  </div>
-                  <div className="flex items-center justify-between">
-                      <span className="flex-grow flex flex-col">
-                          <span className="text-sm font-medium text-gray-900">Point Change Alerts</span>
-                          <span className="text-sm text-gray-500">Receive notifications when your points balance changes.</span>
-                      </span>
-                      <button
-                          type="button"
-                          onClick={toggleAlerts}
-                          className={`${alertsEnabled ? 'bg-blue-600' : 'bg-gray-200'} relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
-                          role="switch"
-                          aria-checked={alertsEnabled}
-                      >
-                          <span aria-hidden="true" className={`${alertsEnabled ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200`} />
-                      </button>
-                  </div>
-              </div>
-          </div>
-
-          {/* Incentive Rules Card */}
-          {!isPending && activeSponsor && (
-              <div className="bg-white overflow-hidden shadow rounded-lg">
-                  <div className="px-4 py-5 sm:p-6">
-                      <div className="flex items-center mb-4">
-                          <Info className="h-5 w-5 text-gray-400 mr-2" />
-                          <h3 className="text-lg leading-6 font-medium text-gray-900">How to Earn Points</h3>
+      {activeTab === 'notifications' && (activeSponsor || isPending) && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {/* Preferences inside Notifications Tab */}
+              <div className="bg-white shadow rounded-2xl overflow-hidden border border-blue-100 bg-blue-50/30">
+                  <div className="px-6 py-4 flex items-center justify-between">
+                      <div className="flex items-center">
+                          <Settings className="h-5 w-5 text-blue-500 mr-2" />
+                          <div>
+                              <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Notification Preferences</h3>
+                              <p className="text-xs text-gray-500">Manage how you receive alerts about your points.</p>
+                          </div>
                       </div>
-                      <div className="prose prose-sm text-gray-500">
-                          {activeSponsor.incentiveRules && activeSponsor.incentiveRules.length > 0 ? (
-                              <ul className="list-disc pl-5 space-y-1">
-                                  {activeSponsor.incentiveRules.map((rule, idx) => (
-                                      <li key={idx}>{rule}</li>
-                                  ))}
-                              </ul>
-                          ) : (
-                              <p>No specific rules listed by sponsor.</p>
-                          )}
+                      <div className="flex items-center space-x-3">
+                          <span className={`text-xs font-bold uppercase tracking-tighter ${alertsEnabled ? 'text-blue-600' : 'text-gray-400'}`}>
+                              Point Change Alerts {alertsEnabled ? 'ON' : 'OFF'}
+                          </span>
+                          <button
+                              type="button"
+                              onClick={toggleAlerts}
+                              className={`${alertsEnabled ? 'bg-blue-600' : 'bg-gray-300'} relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
+                              role="switch"
+                              aria-checked={alertsEnabled}
+                          >
+                              <span aria-hidden="true" className={`${alertsEnabled ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200`} />
+                          </button>
                       </div>
                   </div>
               </div>
-          )}
-      </div>
 
-      {/* History */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-5 sm:px-6 flex flex-col sm:flex-row justify-between items-center">
-          <div>
-              <h3 className="text-lg leading-6 font-medium text-gray-900">Recent Point Activity</h3>
-              <p className="mt-1 max-w-2xl text-sm text-gray-500">Your latest earnings and deductions.</p>
+              <div className="bg-white shadow rounded-2xl overflow-hidden border border-gray-100">
+                  <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                      <div className="flex items-center text-gray-700 font-bold uppercase tracking-widest text-xs">
+                          <Inbox className="w-4 h-4 mr-2 text-blue-500" />
+                          Message Inbox
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-black uppercase">{notifications.length} Total</span>
+                  </div>
+                  
+                  <div className="divide-y divide-gray-100">
+                      {notifications.map((n) => (
+                          <div 
+                            key={n.id} 
+                            onClick={() => !n.isRead && handleReadNotification(n.id)}
+                            className={`p-6 transition-colors cursor-pointer group hover:bg-gray-50 ${n.isRead ? 'opacity-80' : 'bg-white border-l-4 border-blue-500 shadow-sm'}`}
+                          >
+                              <div className="flex justify-between items-start mb-2">
+                                  <div className="flex items-center">
+                                      {n.type === 'ORDER_CONFIRMATION' ? (
+                                          <div className="bg-green-100 p-2 rounded-lg mr-3">
+                                              <Receipt className="w-4 h-4 text-green-600" />
+                                          </div>
+                                      ) : n.type === 'POINT_CHANGE' ? (
+                                          <div className="bg-blue-100 p-2 rounded-lg mr-3">
+                                              <TrendingUp className="w-4 h-4 text-blue-600" />
+                                          </div>
+                                      ) : (
+                                          <div className="bg-gray-100 p-2 rounded-lg mr-3">
+                                              <Bell className="w-4 h-4 text-gray-600" />
+                                          </div>
+                                      )}
+                                      <div>
+                                          <h4 className={`text-sm font-bold ${n.isRead ? 'text-gray-700' : 'text-gray-900'}`}>{n.title}</h4>
+                                          <div className="flex items-center text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">
+                                              <Calendar className="w-3 h-3 mr-1" />
+                                              {new Date(n.date).toLocaleString()}
+                                          </div>
+                                      </div>
+                                  </div>
+                                  {!n.isRead && (
+                                      <span className="h-2 w-2 rounded-full bg-blue-600 shadow-sm shadow-blue-200"></span>
+                                  )}
+                              </div>
+                              <p className="text-sm text-gray-600 ml-12">{n.message}</p>
+                              
+                              {n.type === 'ORDER_CONFIRMATION' && n.metadata?.orderSummary && (
+                                  <div className="ml-12 mt-4 bg-gray-50 rounded-xl border border-gray-100 p-4">
+                                      <div className="flex items-center mb-3 text-xs font-bold text-gray-400 uppercase tracking-widest">
+                                          <Package className="w-3 h-3 mr-1.5" />
+                                          Order Snapshot
+                                      </div>
+                                      <div className="space-y-2">
+                                          {n.metadata.orderSummary.items.map((item: CartItem, i: number) => (
+                                              <div key={i} className="flex justify-between text-xs">
+                                                  <span className="text-gray-600">
+                                                      <span className="font-bold text-gray-900">{item.quantity}x</span> {item.name}
+                                                  </span>
+                                                  <span className="font-mono text-gray-400">{(item.pricePoints * item.quantity).toLocaleString()} pts</span>
+                                              </div>
+                                          ))}
+                                          <div className="pt-2 border-t border-gray-200 flex justify-between items-center">
+                                              <span className="text-xs font-bold text-gray-900">Total Points Spent</span>
+                                              <span className="text-sm font-black text-green-600">{n.metadata.orderSummary.total.toLocaleString()} PTS</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                              )}
+                          </div>
+                      ))}
+                      {notifications.length === 0 && (
+                          <div className="p-20 text-center text-gray-400">
+                              <Inbox className="w-16 h-16 mx-auto mb-4 opacity-10" />
+                              <p className="text-lg font-black uppercase tracking-widest">All caught up!</p>
+                              <p className="text-sm">You have no notifications at this time.</p>
+                          </div>
+                      )}
+                  </div>
+              </div>
           </div>
-          
-          {/* History Filter */}
-          {!isPending && (
-              <div className="mt-4 sm:mt-0 flex items-center space-x-2">
-                  <Filter className="w-4 h-4 text-gray-400" />
-                  <select 
-                      value={historyFilter} 
-                      onChange={(e) => setHistoryFilter(e.target.value as any)}
-                      className="text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
-                  >
-                      <option value="ALL">All Activity</option>
-                      <option value="MANUAL">Manual Awards</option>
-                      <option value="PURCHASE">Purchases</option>
-                  </select>
-              </div>
-          )}
-        </div>
-        <ul className="divide-y divide-gray-200">
-          {!isPending && filteredTransactions.map((t) => (
-            <li key={t.id} className="px-4 py-4 sm:px-6 hover:bg-gray-50">
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col">
-                    <p className="text-sm font-medium text-blue-600 truncate">{t.reason}</p>
-                    <div className="flex items-center space-x-2 mt-1">
-                        <span className="text-xs text-gray-500">{t.sponsorName}</span>
-                        {/* Type Badge */}
-                        {t.type && (
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium 
-                                ${t.type === 'MANUAL' ? 'bg-purple-100 text-purple-800' : 
-                                  t.type === 'PURCHASE' ? 'bg-gray-100 text-gray-800' : 'bg-green-100 text-green-800'}`}>
-                                {t.type}
-                            </span>
-                        )}
-                    </div>
-                </div>
-                <div className="flex flex-col items-end">
-                  <div className={`flex items-center text-sm font-bold ${t.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {t.amount > 0 ? <TrendingUp className="w-4 h-4 mr-1"/> : <TrendingDown className="w-4 h-4 mr-1"/>}
-                    {t.amount > 0 ? '+' : ''}{t.amount}
-                  </div>
-                  <div className="flex items-center text-xs text-gray-500 mt-1">
-                    <Clock className="flex-shrink-0 mr-1.5 h-3 w-3 text-gray-400" />
-                    {t.date}
-                  </div>
-                </div>
-              </div>
-            </li>
-          ))}
-          {(filteredTransactions.length === 0 || isPending) && (
-              <li className="px-4 py-4 text-sm text-gray-500 text-center italic">
-                  {isPending ? "Transaction history will be available after approval." : "No transactions found matching criteria."}
-              </li>
-          )}
-        </ul>
-      </div>
+      )}
     </div>
   );
 };
 
 const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
-    // Basic Sponsor Logic to handle Rules
     const [sponsorOrg, setSponsorOrg] = useState<SponsorOrganization | undefined>(undefined);
     const [newRule, setNewRule] = useState('');
     const [loading, setLoading] = useState(true);
@@ -402,7 +513,6 @@ const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
     useEffect(() => {
         const load = async () => {
              const sp = await getSponsors();
-             // Assume user is linked to s1 for demo or find by ID in real app
              setSponsorOrg(sp.find(s => s.id === 's1')); 
              setLoading(false);
         };
@@ -461,7 +571,6 @@ const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
                      </div>
                  </div>
                  
-                 {/* Rule Management */}
                  <div className="bg-white shadow rounded-lg p-6">
                      <h3 className="text-lg font-medium mb-4">Incentive Rules</h3>
                      <div className="space-y-4">
@@ -545,15 +654,12 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
                     <p className="text-slate-300">Logged in as {user.username}</p>
                  </div>
                  
-                 <div className="flex flex-col items-end">
-                     <div className="flex items-center space-x-2">
-                        <div className={`h-3 w-3 rounded-full ${isTestMode() ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`} />
-                        <span className="font-bold text-sm tracking-wider">{isTestMode() ? 'TEST MODE' : 'PRODUCTION'}</span>
-                     </div>
+                 <div className="flex items-center space-x-2">
+                    <div className={`h-3 w-3 rounded-full ${isTestMode() ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`} />
+                    <span className="font-bold text-sm tracking-wider">{isTestMode() ? 'TEST MODE' : 'PRODUCTION'}</span>
                  </div>
              </div>
 
-             {/* Service Control Panel */}
              <div className="bg-white shadow rounded-lg p-6 border-t-4 border-indigo-500">
                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
                      <Server className="w-5 h-5 mr-2 text-indigo-500" />
@@ -642,7 +748,6 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
                 </button>
              </div>
 
-             {/* Quick Stats & Alerts */}
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                  <div className="bg-white p-6 rounded-lg shadow border-l-4 border-blue-500">
                      <div className="text-gray-500 text-sm font-medium">Total Sponsors</div>

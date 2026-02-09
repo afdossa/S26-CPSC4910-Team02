@@ -1,4 +1,5 @@
-import { User, UserRole, Product, SponsorOrganization, AboutData, AuditLog, PointTransaction, DriverApplication, PendingUser } from '../types';
+
+import { User, UserRole, Product, SponsorOrganization, AboutData, AuditLog, PointTransaction, DriverApplication, PendingUser, Notification } from '../types';
 import { getConfig, isTestMode } from './config';
 import * as MySQL from './mysql';
 
@@ -18,7 +19,8 @@ const DB_KEYS = {
     CATALOG: 'gdip_db_catalog_v1',
     LOGS: 'gdip_db_logs_v1',
     TX: 'gdip_db_tx_v1',
-    APPS: 'gdip_db_apps_v1'
+    APPS: 'gdip_db_apps_v1',
+    NOTIFICATIONS: 'gdip_db_notifications_v1'
 };
 
 // --- MOCK STORAGE HELPERS ---
@@ -32,9 +34,9 @@ const persistMock = (key: string, data: any) => localStorage.setItem(key, JSON.s
 
 // --- MOCK SEED DATA (Kept for Test Mode) ---
 const SEED_USERS: User[] = [
-  { id: 'u1', username: 'driver1', role: UserRole.DRIVER, fullName: 'John Trucker', email: 'john.trucker@example.com', phoneNumber: '555-0101', address: '123 Haul St', sponsorId: 's1', pointsBalance: 5400, avatarUrl: 'https://picsum.photos/200/200?random=1', preferences: { alertsEnabled: true } },
-  { id: 'u2', username: 'sponsor1', role: UserRole.SPONSOR, fullName: 'Alice Logistics', email: 'alice@fastlane.com', sponsorId: 's1', avatarUrl: 'https://picsum.photos/200/200?random=2', preferences: { alertsEnabled: true } },
-  { id: 'u3', username: 'admin', role: UserRole.ADMIN, fullName: 'System Admin', email: 'admin@system.com', avatarUrl: 'https://picsum.photos/200/200?random=3', preferences: { alertsEnabled: true } }
+  { id: 'u1', username: 'driver1', role: UserRole.DRIVER, fullName: 'John Trucker', email: 'john.trucker@example.com', phoneNumber: '555-0101', address: '123 Haul St', bio: 'Veteran driver with over 15 years on the open road. Always prioritizing safety and fuel efficiency.', sponsorId: 's1', pointsBalance: 5400, avatarUrl: 'https://picsum.photos/200/200?random=1', preferences: { alertsEnabled: true } },
+  { id: 'u2', username: 'sponsor1', role: UserRole.SPONSOR, fullName: 'Alice Logistics', email: 'alice@fastlane.com', sponsorId: 's1', bio: 'Logistics coordinator at FastLane. Dedicated to supporting our driver fleet.', avatarUrl: 'https://picsum.photos/200/200?random=2', preferences: { alertsEnabled: true } },
+  { id: 'u3', username: 'admin', role: UserRole.ADMIN, fullName: 'System Admin', email: 'admin@system.com', bio: 'Platform administrator for the Good Driver Incentive Program.', avatarUrl: 'https://picsum.photos/200/200?random=3', preferences: { alertsEnabled: true } }
 ];
 const SEED_SPONSORS: SponsorOrganization[] = [
   { 
@@ -117,6 +119,21 @@ export const updateUserPreferences = async (userId: string, prefs: { alertsEnabl
     return await MySQL.apiUpdateUserPreferences(userId, prefs);
 };
 
+export const updateUserProfile = async (userId: string, updates: Partial<User>) => {
+    if (useMockDB()) {
+        const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
+        const index = users.findIndex(u => u.id === userId);
+        if (index !== -1) {
+            users[index] = { ...users[index], ...updates };
+            persistMock(DB_KEYS.USERS, users);
+            _addMockLog('Profile Updated', users[index].username, 'Self', 'Updated personal details', 'USER_MGMT');
+            return true;
+        }
+        return false;
+    }
+    return await MySQL.apiUpdateUserProfile(userId, updates);
+};
+
 export const createProfile = async (uid: string, username: string, fullName: string, role: UserRole, additionalInfo?: { email: string, phone: string, address: string }) => {
     const newUser: User = {
         id: uid, username, fullName, role,
@@ -136,6 +153,52 @@ export const createProfile = async (uid: string, username: string, fullName: str
     }
     
     return await MySQL.apiCreateProfile(newUser);
+};
+
+// Notifications
+export const getNotifications = async (userId: string): Promise<Notification[]> => {
+    if (useMockDB()) {
+        const all: Notification[] = loadMock(DB_KEYS.NOTIFICATIONS, []);
+        return all.filter(n => n.userId === userId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
+    return await MySQL.apiGetNotifications(userId);
+};
+
+export const addNotification = async (userId: string, title: string, message: string, type: Notification['type'], metadata?: any) => {
+    const newNotif: Notification = {
+        id: `n${Date.now()}`,
+        userId,
+        title,
+        message,
+        date: new Date().toISOString(),
+        isRead: false,
+        type,
+        metadata
+    };
+
+    if (useMockDB()) {
+        const all: Notification[] = loadMock(DB_KEYS.NOTIFICATIONS, []);
+        all.push(newNotif);
+        persistMock(DB_KEYS.NOTIFICATIONS, all);
+        window.dispatchEvent(new Event('notification-added'));
+        return true;
+    }
+    return await MySQL.apiAddNotification(newNotif);
+};
+
+export const markNotificationAsRead = async (id: string) => {
+    if (useMockDB()) {
+        const all: Notification[] = loadMock(DB_KEYS.NOTIFICATIONS, []);
+        const n = all.find(x => x.id === id);
+        if (n) {
+            n.isRead = true;
+            persistMock(DB_KEYS.NOTIFICATIONS, all);
+            window.dispatchEvent(new Event('notification-added')); // Refresh UI
+            return true;
+        }
+        return false;
+    }
+    return await MySQL.apiMarkNotificationAsRead(id);
 };
 
 // We keep createUser for the Admin UI legacy mock function, but make it async
@@ -323,6 +386,17 @@ export const updateDriverPoints = async (driverId: string, amount: number, reaso
                  type: type 
              });
              
+             // System notification for point change
+             if (user.preferences?.alertsEnabled !== false) {
+                 await addNotification(
+                     driverId,
+                     amount > 0 ? 'Points Awarded' : 'Points Deducted',
+                     `${Math.abs(amount).toLocaleString()} points have been ${amount > 0 ? 'added to' : 'removed from'} your account. Reason: ${reason}`,
+                     'POINT_CHANGE',
+                     { amount, reason, sponsorName, type }
+                 );
+             }
+
              persistMock(DB_KEYS.USERS, users);
              persistMock(DB_KEYS.TX, txs);
              return { success: true, message: "Updated Mock DB" };

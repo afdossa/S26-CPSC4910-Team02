@@ -87,8 +87,12 @@ const mockSignOut = async () => {
 
 const mockOnAuthStateChanged = (callback: (user: any) => void) => {
     observers.push(callback);
-    // Fire immediately with current state
-    callback(mockCurrentUser);
+    // CRITICAL FIX: Fire asynchronously to prevent main thread freeze / infinite loop
+    // when switching modes in React effects.
+    setTimeout(() => {
+        callback(mockCurrentUser);
+    }, 10);
+    
     return () => {
         const idx = observers.indexOf(callback);
         if (idx > -1) observers.splice(idx, 1);

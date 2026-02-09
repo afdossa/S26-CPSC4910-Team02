@@ -1,4 +1,5 @@
-import { User, UserRole, DriverApplication, SponsorOrganization, Product, PointTransaction } from '../types';
+
+import { User, UserRole, DriverApplication, SponsorOrganization, Product, PointTransaction, Notification } from '../types';
 import { AWS_API_CONFIG, getConfig } from './config';
 
 /**
@@ -20,6 +21,7 @@ interface ProdDB {
     applications: DriverApplication[];
     products: Product[];
     transactions: PointTransaction[];
+    notifications: Notification[];
 }
 
 const loadProdDB = (): ProdDB => {
@@ -48,9 +50,10 @@ const loadProdDB = (): ProdDB => {
         applications: [],
         products: [
             { id: 'p1', name: 'Wireless Headset', description: 'Noise cancelling headset.', pricePoints: 5000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=10', createdAt: '2025-01-01' },
-            { id: 'p2', name: 'Truck GPS', description: 'Advanced routing.', pricePoints: 15000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=11', createdAt: '2025-01-15' }
+            { id: 'p2', name: 'Truck GPS', description: 'Advanced routing system.', pricePoints: 15000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=11', createdAt: '2025-01-15' }
         ],
-        transactions: []
+        transactions: [],
+        notifications: []
     };
 };
 
@@ -126,6 +129,44 @@ export const apiUpdateUserPreferences = async (userId: string, prefs: { alertsEn
     const user = db.users.find(u => u.id === userId);
     if (user) {
         user.preferences = { ...(user.preferences || { alertsEnabled: true }), ...prefs };
+        saveProdDB(db);
+        return true;
+    }
+    return false;
+};
+
+export const apiUpdateUserProfile = async (userId: string, updates: Partial<User>): Promise<boolean> => {
+    await new Promise(r => setTimeout(r, 300));
+    const db = loadProdDB();
+    const index = db.users.findIndex(u => u.id === userId);
+    if (index !== -1) {
+        db.users[index] = { ...db.users[index], ...updates };
+        saveProdDB(db);
+        return true;
+    }
+    return false;
+};
+
+// --- NOTIFICATIONS ---
+export const apiGetNotifications = async (userId: string): Promise<Notification[]> => {
+    await new Promise(r => setTimeout(r, 200));
+    const db = loadProdDB();
+    return (db.notifications || []).filter(n => n.userId === userId);
+};
+
+export const apiAddNotification = async (notif: Notification): Promise<boolean> => {
+    const db = loadProdDB();
+    if(!db.notifications) db.notifications = [];
+    db.notifications.push(notif);
+    saveProdDB(db);
+    return true;
+};
+
+export const apiMarkNotificationAsRead = async (id: string): Promise<boolean> => {
+    const db = loadProdDB();
+    const n = db.notifications?.find(x => x.id === id);
+    if (n) {
+        n.isRead = true;
         saveProdDB(db);
         return true;
     }
@@ -214,8 +255,8 @@ export const apiUpdateDriverPoints = async (userId: string, amount: number, reas
     if (!user) return { success: false, message: "User not found" };
     
     // Check Floor
+    const sponsor = db.sponsors.find(s => s.id === sponsorId);
     if (amount < 0) {
-        const sponsor = db.sponsors.find(s => s.id === sponsorId);
         const current = user.pointsBalance || 0;
         const floor = sponsor?.pointsFloor || 0;
         if (current + amount < floor) {
@@ -230,9 +271,25 @@ export const apiUpdateDriverPoints = async (userId: string, amount: number, reas
         date: new Date().toISOString().split('T')[0],
         amount,
         reason,
-        sponsorName: db.sponsors.find(s => s.id === sponsorId)?.name || 'Unknown',
+        sponsorName: sponsor?.name || 'Unknown',
         type: type
     });
+
+    // Add persistent system notification for point change in production simulation
+    if (user.preferences?.alertsEnabled !== false) {
+        const notif: Notification = {
+            id: `pn${Date.now()}`,
+            userId,
+            title: amount > 0 ? 'Points Awarded' : 'Points Deducted',
+            message: `${Math.abs(amount).toLocaleString()} points have been ${amount > 0 ? 'added to' : 'removed from'} your account. Reason: ${reason}`,
+            date: new Date().toISOString(),
+            isRead: false,
+            type: 'POINT_CHANGE',
+            metadata: { amount, reason, sponsorName: sponsor?.name }
+        };
+        if(!db.notifications) db.notifications = [];
+        db.notifications.push(notif);
+    }
 
     saveProdDB(db);
     return { success: true, message: "Transaction committed" };

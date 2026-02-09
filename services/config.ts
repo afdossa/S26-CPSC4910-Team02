@@ -9,11 +9,11 @@ export interface ServiceConfig {
 
 const CONFIG_KEY = 'gdip_service_config_v1';
 
-// CHANGED: Default is now Production (False) as requested
+// Default is Test Mode (True) for the initial offering demo
 const DEFAULT_CONFIG: ServiceConfig = {
-    useMockAuth: false,
-    useMockDB: false,
-    useMockRedshift: false
+    useMockAuth: true,
+    useMockDB: true,
+    useMockRedshift: true
 };
 
 // Load config or default
@@ -33,16 +33,21 @@ export const getConfig = (): ServiceConfig => {
 };
 
 export const updateConfig = (newConfig: Partial<ServiceConfig>, forceReload = false) => {
+    // 1. Update internal state immediately
     currentConfig = { ...currentConfig, ...newConfig };
+    
+    // 2. Persist to storage
     localStorage.setItem(CONFIG_KEY, JSON.stringify(currentConfig));
     
-    // Dispatch event for UI updates
-    window.dispatchEvent(new Event('config-change'));
-    
-    // Only reload if explicitly forced (avoiding this prevents 404s in some SPA environments)
-    if (forceReload) {
-        window.location.reload();
-    }
+    // 3. Dispatch event for UI updates asynchronously to avoid blocking the click handler
+    setTimeout(() => {
+        window.dispatchEvent(new Event('config-change'));
+        
+        // Only reload if explicitly forced (avoiding this prevents 404s in some SPA environments)
+        if (forceReload) {
+            window.location.reload();
+        }
+    }, 50);
 };
 
 export const resetToDefaults = (forceReload = true) => {

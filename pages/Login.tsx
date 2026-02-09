@@ -4,7 +4,7 @@ import { createProfile, getUserProfile, getAllUsers } from '../services/mockData
 import { authService } from '../services/auth';
 import { updateConfig, isTestMode, getConfig } from '../services/config';
 import { useNavigate } from 'react-router-dom';
-import { Lock, UserPlus, AlertTriangle, Beaker, Shield, Building, Truck, RefreshCw, Loader } from 'lucide-react';
+import { Lock, UserPlus, AlertTriangle, Shield, Building, Truck } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -38,7 +38,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   // Test Mode State
   const [testMode, setTestMode] = useState(isTestMode());
-  const [isSwitchingMode, setIsSwitchingMode] = useState(false);
 
   const navigate = useNavigate();
 
@@ -46,7 +45,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   useEffect(() => {
       const handleConfigChange = () => {
           setTestMode(isTestMode());
-          setIsSwitchingMode(false); // Stop spinning when change is detected
       };
       window.addEventListener('config-change', handleConfigChange);
       return () => window.removeEventListener('config-change', handleConfigChange);
@@ -201,26 +199,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       }
   };
 
-  // --- VALIDATION TOOLS LOGIC ---
-  const toggleTestMode = () => {
-      setIsSwitchingMode(true);
-      const newState = !testMode;
-      
-      // Update config WITHOUT forcing reload.
-      // App.tsx is now listening to config changes and will re-bind Auth service automatically.
-      updateConfig({
-          useMockAuth: newState,
-          useMockDB: newState,
-          useMockRedshift: newState
-      }, false); 
-  };
-
   const fillCreds = (type: 'admin' | 'sponsor' | 'driver') => {
-      // 1. Force into Login mode (not register mode)
       setIsRegistering(false);
       setError(null);
-      
-      // 2. Set credentials
       setPassword('password');
       
       if (type === 'admin') setEmail('admin@system.com');
@@ -229,25 +210,25 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+    <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-900 px-4 sm:px-6 lg:px-8 transition-colors">
+      <div className="max-w-md w-full space-y-8 bg-white dark:bg-slate-800 p-8 rounded-xl shadow-lg border border-gray-100 dark:border-slate-700">
         <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
             {isRegistering ? 'Create Account' : 'Welcome Back'}
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
             {isRegistering ? 'Complete your profile to start earning rewards' : 'Sign in to access your dashboard'}
           </p>
         </div>
 
         {error && (
-            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
+            <div className="bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-500 p-4 mb-4">
                 <div className="flex">
                     <div className="flex-shrink-0">
                         <AlertTriangle className="h-5 w-5 text-blue-500" />
                     </div>
                     <div className="ml-3">
-                        <p className="text-sm text-blue-700">{error}</p>
+                        <p className="text-sm text-blue-700 dark:text-blue-200">{error}</p>
                     </div>
                 </div>
             </div>
@@ -255,70 +236,69 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
         {isRegistering ? (
              <form className="mt-8 space-y-4" onSubmit={handleRegister}>
-                {/* Registration Form Fields */}
                 <div className="rounded-md shadow-sm space-y-3">
                     <div>
-                        <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                        <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Full Name</label>
                         <input
                             id="fullName"
                             type="text"
                             required
-                            className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                            className="appearance-none relative block w-full px-3 py-2 border border-gray-300 dark:border-slate-600 placeholder-gray-500 text-gray-900 dark:text-white rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-700"
                             value={regFullName}
                             onChange={(e) => setRegFullName(e.target.value)}
                         />
                     </div>
                     <div>
-                        <label htmlFor="regUsername" className="block text-sm font-medium text-gray-700 mb-1">Username (Display Name)</label>
+                        <label htmlFor="regUsername" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Username (Display Name)</label>
                         <input
                             id="regUsername"
                             type="text"
                             required
-                            className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                            className="appearance-none relative block w-full px-3 py-2 border border-gray-300 dark:border-slate-600 placeholder-gray-500 text-gray-900 dark:text-white rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-700"
                             value={regUsername}
                             onChange={(e) => setRegUsername(e.target.value)}
                         />
                     </div>
                      <div>
-                        <label htmlFor="regEmail" className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                        <label htmlFor="regEmail" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email Address</label>
                         <input
                             id="regEmail"
                             type="email"
                             required
-                            className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                            className="appearance-none relative block w-full px-3 py-2 border border-gray-300 dark:border-slate-600 placeholder-gray-500 text-gray-900 dark:text-white rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-700"
                             value={regEmail}
                             onChange={(e) => setRegEmail(e.target.value)}
                         />
                     </div>
                      <div className="grid grid-cols-2 gap-3">
                          <div>
-                            <label htmlFor="regPhone" className="block text-sm font-medium text-gray-700 mb-1">Phone (Optional)</label>
+                            <label htmlFor="regPhone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Phone (Optional)</label>
                             <input
                                 id="regPhone"
                                 type="tel"
-                                className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                                className="appearance-none relative block w-full px-3 py-2 border border-gray-300 dark:border-slate-600 placeholder-gray-500 text-gray-900 dark:text-white rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-700"
                                 value={regPhone}
                                 onChange={(e) => setRegPhone(e.target.value)}
                             />
                         </div>
                         <div>
-                             <label htmlFor="regPassword" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                             <label htmlFor="regPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
                             <input
                                 id="regPassword"
                                 type="password"
                                 required
-                                className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                                className="appearance-none relative block w-full px-3 py-2 border border-gray-300 dark:border-slate-600 placeholder-gray-500 text-gray-900 dark:text-white rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-700"
                                 value={regPassword}
                                 onChange={(e) => setRegPassword(e.target.value)}
                             />
                         </div>
                     </div>
                     <div>
-                        <label htmlFor="regAddress" className="block text-sm font-medium text-gray-700 mb-1">Address (Optional)</label>
+                        <label htmlFor="regAddress" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Address (Optional)</label>
                         <textarea
                             id="regAddress"
                             rows={2}
-                            className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                            className="appearance-none relative block w-full px-3 py-2 border border-gray-300 dark:border-slate-600 placeholder-gray-500 text-gray-900 dark:text-white rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-700"
                             value={regAddress}
                             onChange={(e) => setRegAddress(e.target.value)}
                         />
@@ -338,7 +318,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     </button>
                 </div>
                 <div className="text-center">
-                    <button type="button" onClick={() => setIsRegistering(false)} className="text-sm text-blue-600 hover:text-blue-500">
+                    <button type="button" onClick={() => setIsRegistering(false)} className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-500">
                         Back to Login
                     </button>
                 </div>
@@ -354,7 +334,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                             name="email"
                             type="email"
                             required
-                            className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-white"
+                            className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-slate-600 placeholder-gray-500 text-gray-900 dark:text-white rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-white dark:bg-slate-700"
                             placeholder="Email Address"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
@@ -367,7 +347,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                             name="password"
                             type="password"
                             required
-                            className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-white"
+                            className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-slate-600 placeholder-gray-500 text-gray-900 dark:text-white rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-white dark:bg-slate-700"
                             placeholder="Password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
@@ -379,10 +359,10 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                         <button
                         type="submit"
                         disabled={loading}
-                        className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                        className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 shadow-md"
                         >
                         <span className="absolute left-0 inset-y-0 flex items-center pl-3">
-                            <Lock className="h-5 w-5 text-blue-500 group-hover:text-blue-400" aria-hidden="true" />
+                            <Lock className="h-5 w-5 text-blue-500 group-hover:text-blue-400 dark:text-blue-200" aria-hidden="true" />
                         </span>
                         {loading ? 'Signing in...' : 'Sign in with Email'}
                         </button>
@@ -391,10 +371,10 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
                 <div className="relative">
                     <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-gray-300"></div>
+                        <div className="w-full border-t border-gray-300 dark:border-slate-600"></div>
                     </div>
                     <div className="relative flex justify-center text-sm">
-                        <span className="px-2 bg-white text-gray-500">Or continue with</span>
+                        <span className="px-2 bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400">Or continue with</span>
                     </div>
                 </div>
 
@@ -403,18 +383,15 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                         type="button"
                         onClick={handleGoogleLogin}
                         disabled={loading}
-                        className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                        className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm bg-white dark:bg-slate-700 text-sm font-medium text-gray-700 dark:text-white hover:bg-gray-50 dark:hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                     >
                         <GoogleIcon />
                         <span className="ml-3">Sign in with Google</span>
                     </button>
-                    <p className="mt-2 text-center text-xs text-gray-500">
-                        Supports 2-Step Verification
-                    </p>
                 </div>
 
                 <div className="text-center">
-                    <button type="button" onClick={() => setIsRegistering(true)} className="text-sm text-blue-600 hover:text-blue-500">
+                    <button type="button" onClick={() => setIsRegistering(true)} className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-500">
                         Need an account? Register
                     </button>
                 </div>
@@ -422,70 +399,35 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         )}
       </div>
 
-      {/* --- VALIDATION TOOLS PANEL --- */}
-      {/* This section is intended for internal validation/demo only. Remove before final production deployment. */}
-      <div className="mt-8 p-4 bg-slate-100 border border-slate-300 rounded-lg max-w-md w-full relative group shadow-sm transition-all duration-300">
-          <div className="absolute -top-3 left-4 bg-slate-500 text-white text-xs px-2 py-0.5 rounded uppercase font-bold tracking-wider">
-              Validation Tools
-          </div>
-          
-          <div className="flex items-center justify-between mb-2 mt-2">
-              <div className="flex items-center text-sm font-medium text-slate-700">
-                  <Beaker className="w-4 h-4 mr-2 text-slate-500" />
-                  Test Mode: {testMode ? <span className="text-green-600 font-bold ml-1">ON</span> : <span className="text-red-600 font-bold ml-1">OFF</span>}
+      {/* Quick Login Helpers (Only in Test Mode) */}
+      {testMode && (
+          <div className="mt-8 max-w-md w-full">
+              <p className="text-xs text-center text-gray-400 mb-3 uppercase tracking-wider font-semibold">Development Shortcuts</p>
+              <div className="grid grid-cols-3 gap-3">
+                  <button 
+                      onClick={() => fillCreds('admin')}
+                      className="flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg hover:shadow-md hover:border-purple-300 transition-all group"
+                  >
+                      <Shield className="w-5 h-5 mb-1 text-purple-500 group-hover:scale-110 transition-transform" />
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Admin</span>
+                  </button>
+                  <button 
+                      onClick={() => fillCreds('sponsor')}
+                      className="flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg hover:shadow-md hover:border-blue-300 transition-all group"
+                  >
+                      <Building className="w-5 h-5 mb-1 text-blue-500 group-hover:scale-110 transition-transform" />
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Sponsor</span>
+                  </button>
+                  <button 
+                      onClick={() => fillCreds('driver')}
+                      className="flex flex-col items-center justify-center p-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg hover:shadow-md hover:border-amber-300 transition-all group"
+                  >
+                      <Truck className="w-5 h-5 mb-1 text-amber-500 group-hover:scale-110 transition-transform" />
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Driver</span>
+                  </button>
               </div>
-              <button 
-                  type="button"
-                  onClick={toggleTestMode}
-                  disabled={isSwitchingMode}
-                  className={`text-xs px-3 py-1.5 rounded border shadow-sm transition-colors flex items-center ${testMode ? 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' : 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'}`}
-              >
-                  {isSwitchingMode ? (
-                      <>
-                        <Loader className="w-3 h-3 mr-1 animate-spin" /> Switching...
-                      </>
-                  ) : (
-                      <>
-                        <RefreshCw className="w-3 h-3 mr-1" />
-                        {testMode ? 'Disable Mocks' : 'Enable Mocks'}
-                      </>
-                  )}
-              </button>
           </div>
-
-          {testMode && !isSwitchingMode && (
-              <div className="space-y-2 pt-2 border-t border-slate-200 animate-in fade-in slide-in-from-top-2 duration-300">
-                  <p className="text-xs text-slate-500 mb-2 font-semibold">One-Click Credentials:</p>
-                  <div className="grid grid-cols-3 gap-2">
-                      <button 
-                          type="button"
-                          onClick={() => fillCreds('admin')}
-                          className="flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded hover:bg-purple-50 hover:border-purple-200 transition-all text-xs font-medium text-slate-600 hover:text-purple-700 hover:shadow-sm"
-                      >
-                          <Shield className="w-4 h-4 mb-1" />
-                          Admin
-                      </button>
-                      <button 
-                          type="button"
-                          onClick={() => fillCreds('sponsor')}
-                          className="flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded hover:bg-blue-50 hover:border-blue-200 transition-all text-xs font-medium text-slate-600 hover:text-blue-700 hover:shadow-sm"
-                      >
-                          <Building className="w-4 h-4 mb-1" />
-                          Sponsor
-                      </button>
-                      <button 
-                          type="button"
-                          onClick={() => fillCreds('driver')}
-                          className="flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded hover:bg-amber-50 hover:border-amber-200 transition-all text-xs font-medium text-slate-600 hover:text-amber-700 hover:shadow-sm"
-                      >
-                          <Truck className="w-4 h-4 mb-1" />
-                          Driver
-                      </button>
-                  </div>
-                  <p className="text-[10px] text-slate-400 text-center pt-1">Populates form above. Click 'Sign in' to proceed.</p>
-              </div>
-          )}
-      </div>
+      )}
     </div>
   );
 };
