@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, UserRole, DriverApplication, SponsorOrganization, PointTransaction, Notification, CartItem } from '../types';
-import { submitApplication, getDriverApplication, getSponsors, getTransactions, updateUserPreferences, getUserProfile, getCatalog, updateSponsorRules, getNotifications, markNotificationAsRead } from '../services/mockData';
+import { submitApplication, getDriverApplication, getSponsors, getTransactions, updateUserPreferences, getUserProfile, getCatalog, updateSponsorRules, getNotifications, markNotificationAsRead, getAllUsers } from '../services/mockData';
 import { triggerRedshiftArchive } from '../services/mysql';
 import { getConfig, updateConfig, isTestMode } from '../services/config';
-import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X, DollarSign, RefreshCw, User as UserIcon, Receipt, Package, Inbox, Calendar, Settings, Globe, Download, Activity, Award, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X, DollarSign, RefreshCw, User as UserIcon, Receipt, Package, Inbox, Calendar, Settings, Globe, Download, Activity, Award, BarChart3, Truck } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
@@ -722,11 +722,29 @@ const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
 const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
     const [config, setConfig] = useState(getConfig());
     const [archiving, setArchiving] = useState(false);
+    const [stats, setStats] = useState({ sponsors: 0, users: 0, drivers: 0 });
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const handleConfigChange = () => setConfig(getConfig());
         window.addEventListener('config-change', handleConfigChange);
         return () => window.removeEventListener('config-change', handleConfigChange);
+    }, []);
+
+    useEffect(() => {
+        const loadStats = async () => {
+            const [allUsers, allSponsors] = await Promise.all([
+                getAllUsers(),
+                getSponsors()
+            ]);
+            setStats({
+                users: allUsers.length,
+                drivers: allUsers.filter(u => u.role === UserRole.DRIVER).length,
+                sponsors: allSponsors.length
+            });
+            setLoading(false);
+        };
+        loadStats();
     }, []);
 
     const toggleService = (key: keyof typeof config) => {
@@ -756,8 +774,35 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
     return (
         <div className="space-y-6">
             <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">System Administration</h2>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">System Administration</h2>
                 
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                     <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-lg border border-indigo-100 dark:border-indigo-900">
+                         <h3 className="text-indigo-800 dark:text-indigo-300 font-semibold flex items-center">
+                            <Building className="w-4 h-4 mr-2" /> Total Sponsors
+                         </h3>
+                         <p className="text-3xl font-bold text-indigo-900 dark:text-indigo-100 mt-2">
+                            {loading ? <Loader className="w-6 h-6 animate-spin"/> : stats.sponsors}
+                         </p>
+                     </div>
+                     <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900">
+                         <h3 className="text-blue-800 dark:text-blue-300 font-semibold flex items-center">
+                            <Truck className="w-4 h-4 mr-2" /> Active Drivers
+                         </h3>
+                         <p className="text-3xl font-bold text-blue-900 dark:text-blue-100 mt-2">
+                            {loading ? <Loader className="w-6 h-6 animate-spin"/> : stats.drivers}
+                         </p>
+                     </div>
+                     <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg border border-purple-100 dark:border-purple-900">
+                         <h3 className="text-purple-800 dark:text-purple-300 font-semibold flex items-center">
+                            <UserIcon className="w-4 h-4 mr-2" /> Total Users
+                         </h3>
+                         <p className="text-3xl font-bold text-purple-900 dark:text-purple-100 mt-2">
+                            {loading ? <Loader className="w-6 h-6 animate-spin"/> : stats.users}
+                         </p>
+                     </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                      <Link to="/admin/sponsors" className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-xl border border-blue-100 dark:border-blue-800 hover:shadow-md transition-shadow">
                         <Building className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-3" />
