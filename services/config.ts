@@ -1,3 +1,4 @@
+
 // Granular Service Configuration
 // Persisted in LocalStorage so settings survive refreshes
 
@@ -32,29 +33,24 @@ export const getConfig = (): ServiceConfig => {
     return currentConfig;
 };
 
-export const updateConfig = (newConfig: Partial<ServiceConfig>, forceReload = false) => {
+export const updateConfig = (newConfig: Partial<ServiceConfig>) => {
     // 1. Update internal state immediately
     currentConfig = { ...currentConfig, ...newConfig };
     
     // 2. Persist to storage
     localStorage.setItem(CONFIG_KEY, JSON.stringify(currentConfig));
     
-    // 3. Dispatch event for UI updates asynchronously to avoid blocking the click handler
+    // 3. Dispatch event for UI updates asynchronously
+    // We removed window.location.reload() to avoid security errors in blob-origin environments.
     setTimeout(() => {
         window.dispatchEvent(new Event('config-change'));
-        
-        // Only reload if explicitly forced (avoiding this prevents 404s in some SPA environments)
-        if (forceReload) {
-            window.location.reload();
-        }
     }, 50);
 };
 
-export const resetToDefaults = (forceReload = true) => {
+export const resetToDefaults = () => {
     localStorage.removeItem(CONFIG_KEY);
     currentConfig = DEFAULT_CONFIG;
     window.dispatchEvent(new Event('config-change'));
-    if(forceReload) window.location.reload();
 };
 
 export const forceTestMode = () => {
@@ -62,11 +58,10 @@ export const forceTestMode = () => {
         useMockAuth: true,
         useMockDB: true,
         useMockRedshift: true
-    }, false);
+    });
 };
 
 // Helper for the "Test Mode" visual indicator (Red Border)
-// We consider it "Test Mode" if ANY service is being mocked.
 export const isTestMode = () => {
     return currentConfig.useMockAuth || currentConfig.useMockDB || currentConfig.useMockRedshift;
 };

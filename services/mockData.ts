@@ -1,5 +1,5 @@
 
-import { User, UserRole, Product, SponsorOrganization, AboutData, AuditLog, PointTransaction, DriverApplication, PendingUser, Notification } from '../types';
+import { User, UserRole, Product, SponsorOrganization, AboutData, AuditLog, PointTransaction, DriverApplication, PendingUser, Notification, GlobalSettings } from '../types';
 import { getConfig, isTestMode } from './config';
 import * as MySQL from './mysql';
 
@@ -8,8 +8,6 @@ import * as MySQL from './mysql';
  * 
  * This service decides whether to use the LocalStorage Mock DB (Test Mode)
  * or the AWS MySQL API (Prod Mode) based on the configuration.
- * 
- * ALL interactions now return Promises to support the async nature of the MySQL connection.
  */
 
 const DB_KEYS = {
@@ -20,23 +18,36 @@ const DB_KEYS = {
     LOGS: 'gdip_db_logs_v1',
     TX: 'gdip_db_tx_v1',
     APPS: 'gdip_db_apps_v1',
-    NOTIFICATIONS: 'gdip_db_notifications_v1'
+    NOTIFICATIONS: 'gdip_db_notifications_v1',
+    SETTINGS: 'gdip_db_global_settings_v1'
 };
 
 // --- MOCK STORAGE HELPERS ---
 const loadMock = <T>(key: string, seed: T): T => {
     try {
         const stored = localStorage.getItem(key);
-        return stored ? JSON.parse(stored) : seed;
-    } catch (e) { return seed; }
+        // CRITICAL: Always return a new object/array to prevent reference sharing with the SEED constants
+        return stored ? JSON.parse(stored) : JSON.parse(JSON.stringify(seed));
+    } catch (e) { 
+        return JSON.parse(JSON.stringify(seed)); 
+    }
 };
 const persistMock = (key: string, data: any) => localStorage.setItem(key, JSON.stringify(data));
 
-// --- MOCK SEED DATA (Kept for Test Mode) ---
+// --- MOCK SEED DATA ---
+const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
+    minRedemptionPoints: 500,
+    isRegistrationEnabled: true,
+    maintenanceMode: false,
+    systemContactEmail: 'support@drivewell.com',
+    allowDriverPasswordResets: true
+};
+
 const SEED_USERS: User[] = [
-  { id: 'u1', username: 'driver1', role: UserRole.DRIVER, fullName: 'John Trucker', email: 'john.trucker@example.com', phoneNumber: '555-0101', address: '123 Haul St', bio: 'Veteran driver with over 15 years on the open road. Always prioritizing safety and fuel efficiency.', sponsorId: 's1', pointsBalance: 5400, avatarUrl: 'https://picsum.photos/200/200?random=1', preferences: { alertsEnabled: true } },
-  { id: 'u2', username: 'sponsor1', role: UserRole.SPONSOR, fullName: 'Alice Logistics', email: 'alice@fastlane.com', sponsorId: 's1', bio: 'Logistics coordinator at FastLane. Dedicated to supporting our driver fleet.', avatarUrl: 'https://picsum.photos/200/200?random=2', preferences: { alertsEnabled: true } },
-  { id: 'u3', username: 'admin', role: UserRole.ADMIN, fullName: 'System Admin', email: 'admin@system.com', bio: 'Platform administrator for the Good Driver Incentive Program.', avatarUrl: 'https://picsum.photos/200/200?random=3', preferences: { alertsEnabled: true } }
+  { id: 'u1', username: 'driver1', role: UserRole.DRIVER, fullName: 'John Trucker', email: 'john.trucker@example.com', phoneNumber: '555-0101', address: '123 Haul St', bio: 'Veteran driver with over 15 years on the open road. Always prioritizing safety and fuel efficiency.', sponsorId: 's1', pointsBalance: 5400, avatarUrl: 'https://picsum.photos/200/200?random=1', isActive: true, preferences: { alertsEnabled: true } },
+  { id: 'u2', username: 'sponsor1', role: UserRole.SPONSOR, fullName: 'Alice Logistics', email: 'alice@fastlane.com', sponsorId: 's1', bio: 'Logistics coordinator at FastLane. Dedicated to supporting our driver fleet.', avatarUrl: 'https://picsum.photos/200/200?random=2', isActive: true, preferences: { alertsEnabled: true } },
+  { id: 'u3', username: 'admin', role: UserRole.ADMIN, fullName: 'System Admin', email: 'admin@system.com', bio: 'Platform administrator for the Good Driver Incentive Program.', avatarUrl: 'https://picsum.photos/200/200?random=3', isActive: true, preferences: { alertsEnabled: true } },
+  { id: 'u4', username: 'driver2', role: UserRole.DRIVER, fullName: 'Sarah Swift', email: 'sarah@express.com', sponsorId: 's1', pointsBalance: 3200, avatarUrl: 'https://picsum.photos/200/200?random=4', isActive: true, preferences: { alertsEnabled: true } }
 ];
 const SEED_SPONSORS: SponsorOrganization[] = [
   { 
@@ -76,24 +87,45 @@ const SEED_AUDIT_LOGS: AuditLog[] = [
     { id: 'l2', date: '2026-01-21', action: 'Point Adjustment', actor: 'sponsor1', target: 'driver1', details: 'Added 500 points', category: 'POINT_CHANGE' }
 ];
 
-// --- PUBLIC EXPORTS FOR MOCK DATA ---
+const SEED_TX: PointTransaction[] = [
+    { id: 't1', date: '2026-01-15', amount: 500, reason: 'Safe Driving Bonus', sponsorName: 'FastLane Logistics', driverName: 'John Trucker', type: 'MANUAL' },
+    { id: 't2', date: '2026-01-18', amount: 200, reason: 'On-time Delivery', sponsorName: 'FastLane Logistics', driverName: 'John Trucker', type: 'MANUAL' },
+    { id: 't3', date: '2026-01-22', amount: 100, reason: 'Clean Inspection', sponsorName: 'FastLane Logistics', driverName: 'Sarah Swift', type: 'MANUAL' },
+    { id: 't4', date: '2026-01-25', amount: -5000, reason: 'Purchase: Wireless Headset', sponsorName: 'FastLane Logistics', driverName: 'John Trucker', type: 'PURCHASE' }
+];
+
+// --- PUBLIC EXPORTS ---
 export const MOCK_USERS = SEED_USERS;
 export const MOCK_CATALOG = SEED_CATALOG;
 export const MOCK_SPONSORS = SEED_SPONSORS;
 export const MOCK_APPLICATIONS = SEED_APPLICATIONS;
 export const MOCK_AUDIT_LOGS = SEED_AUDIT_LOGS;
 
-// --- PUBLIC API (FACADE) ---
-
 const useMockDB = () => getConfig().useMockDB;
 
 export const resetDatabase = () => {
     if (useMockDB()) {
         localStorage.clear();
-        window.location.reload();
-    } else {
-        alert("Cannot reset Production MySQL Database from client.");
+        window.dispatchEvent(new Event('config-change'));
     }
+};
+
+// Global Settings
+export const getGlobalSettings = async (): Promise<GlobalSettings> => {
+    if (useMockDB()) {
+        return loadMock(DB_KEYS.SETTINGS, DEFAULT_GLOBAL_SETTINGS);
+    }
+    // Production call would happen here
+    return DEFAULT_GLOBAL_SETTINGS;
+};
+
+export const updateGlobalSettings = async (settings: GlobalSettings): Promise<boolean> => {
+    if (useMockDB()) {
+        persistMock(DB_KEYS.SETTINGS, settings);
+        await addAuditLog('System Settings Updated', 'admin', 'Global Config', 'Updated system-wide administrative settings', 'SETTINGS');
+        return true;
+    }
+    return true;
 };
 
 // User Profiles
@@ -126,12 +158,56 @@ export const updateUserProfile = async (userId: string, updates: Partial<User>) 
         if (index !== -1) {
             users[index] = { ...users[index], ...updates };
             persistMock(DB_KEYS.USERS, users);
-            _addMockLog('Profile Updated', users[index].username, 'Self', 'Updated personal details', 'USER_MGMT');
+            await addAuditLog('Profile Updated', users[index].username, 'Self', 'Updated personal details', 'USER_MGMT');
             return true;
         }
         return false;
     }
     return await MySQL.apiUpdateUserProfile(userId, updates);
+};
+
+export const banUser = async (userId: string, active: boolean) => {
+    if (useMockDB()) {
+        const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
+        const userIndex = users.findIndex(u => u.id === userId);
+        if (userIndex !== -1) {
+            users[userIndex].isActive = active;
+            persistMock(DB_KEYS.USERS, users);
+            // Record in audit log
+            await addAuditLog(
+                active ? 'User Unbanned' : 'User Banned', 
+                'admin', 
+                users[userIndex].username, 
+                `Administrative account status changed to ${active ? 'Active' : 'Banned'}`, 
+                'USER_MGMT'
+            );
+            return true;
+        }
+        return false;
+    }
+    return await MySQL.apiBanUser(userId, active);
+};
+
+export const deleteUser = async (userId: string) => {
+    if (useMockDB()) {
+        const usersBefore: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
+        const userToDelete = usersBefore.find(u => u.id === userId);
+        if (userToDelete) {
+            const usersAfter = usersBefore.filter(u => u.id !== userId);
+            persistMock(DB_KEYS.USERS, usersAfter);
+            // Record in audit log
+            await addAuditLog(
+                'User Deleted', 
+                'admin', 
+                userToDelete.username, 
+                'Account permanently removed from system by administrator', 
+                'USER_MGMT'
+            );
+            return true;
+        }
+        return false;
+    }
+    return await MySQL.apiDeleteUser(userId);
 };
 
 export const createProfile = async (uid: string, username: string, fullName: string, role: UserRole, additionalInfo?: { email: string, phone: string, address: string }) => {
@@ -140,6 +216,7 @@ export const createProfile = async (uid: string, username: string, fullName: str
         email: additionalInfo?.email, phoneNumber: additionalInfo?.phone, address: additionalInfo?.address,
         avatarUrl: `https://picsum.photos/200/200?random=${Date.now()}`,
         pointsBalance: role === UserRole.DRIVER ? 0 : undefined,
+        isActive: true,
         preferences: { alertsEnabled: true }
     };
 
@@ -148,7 +225,7 @@ export const createProfile = async (uid: string, username: string, fullName: str
         if (users.some(u => u.username === username)) return false;
         users.push(newUser);
         persistMock(DB_KEYS.USERS, users);
-        _addMockLog('User Registered', 'system', username, `Role: ${role}`, 'USER_MGMT');
+        await addAuditLog('User Registered', 'system', username, `New account created with role: ${role}`, 'USER_MGMT');
         return true;
     }
     
@@ -201,7 +278,6 @@ export const markNotificationAsRead = async (id: string) => {
     return await MySQL.apiMarkNotificationAsRead(id);
 };
 
-// We keep createUser for the Admin UI legacy mock function, but make it async
 export const createUser = async (username: string, fullName: string, role: UserRole, password?: string, additionalInfo?: { email?: string, phone?: string }) => {
     if (useMockDB()) {
         const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
@@ -210,17 +286,17 @@ export const createUser = async (username: string, fullName: string, role: UserR
             email: additionalInfo?.email, phoneNumber: additionalInfo?.phone,
             avatarUrl: `https://picsum.photos/200/200?random=${Date.now()}`,
             pointsBalance: role === UserRole.DRIVER ? 0 : undefined,
+            isActive: true,
             preferences: { alertsEnabled: true }
         };
         users.push(newUser);
         persistMock(DB_KEYS.USERS, users);
+        await addAuditLog('User Created', 'admin', username, `Admin created user with role: ${role}`, 'USER_MGMT');
         return true;
     }
-    // In production, we can't create users without Firebase Auth, so this might fail or call a cloud function
     return false;
 };
 
-// Update User Role (Admin Feature)
 export const updateUserRole = async (userId: string, newRole: UserRole): Promise<boolean> => {
     if (useMockDB()) {
         const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
@@ -228,7 +304,7 @@ export const updateUserRole = async (userId: string, newRole: UserRole): Promise
         if (user) {
             user.role = newRole;
             persistMock(DB_KEYS.USERS, users);
-            _addMockLog('Role Update', 'admin', user.username, `Changed to ${newRole}`, 'USER_MGMT');
+            await addAuditLog('Role Update', 'admin', user.username, `Changed to ${newRole}`, 'USER_MGMT');
             return true;
         }
         return false;
@@ -236,10 +312,14 @@ export const updateUserRole = async (userId: string, newRole: UserRole): Promise
     return await MySQL.apiUpdateUserRole(userId, newRole);
 };
 
-// Data Getters (All Users)
 export const getAllUsers = async (): Promise<User[]> => {
     if (useMockDB()) return loadMock(DB_KEYS.USERS, SEED_USERS);
     return await MySQL.apiGetAllUsers();
+};
+
+export const getDriversBySponsor = async (sponsorId: string): Promise<User[]> => {
+    const all = await getAllUsers();
+    return all.filter(u => u.role === UserRole.DRIVER && u.sponsorId === sponsorId);
 };
 
 // Sponsors
@@ -296,12 +376,9 @@ export const updateSponsorRules = async (sponsorId: string, rules: string[]) => 
 
 // Applications
 export const submitApplication = async (userId: string, sponsorId: string, details: any) => {
-    // 1. Get the current user details to populate the application
     const user = await getUserProfile(userId);
-    
-    // 2. Construct the full application object
     const newApp: DriverApplication = {
-        id: `app${Date.now()}`, // will be overwritten in MySQL if needed, or used here
+        id: `app${Date.now()}`,
         userId, 
         sponsorId, 
         applicantName: user?.fullName || 'Unknown',
@@ -313,14 +390,12 @@ export const submitApplication = async (userId: string, sponsorId: string, detai
 
     if (useMockDB()) {
         const apps: DriverApplication[] = loadMock(DB_KEYS.APPS, []);
-        // Remove old pending for this user
         const cleanApps = apps.filter(a => !(a.userId === userId && a.status === 'PENDING'));
         cleanApps.push(newApp);
         persistMock(DB_KEYS.APPS, cleanApps);
         return true;
     }
 
-    // Production (MySQL)
     return await MySQL.apiSubmitApplication(newApp);
 };
 
@@ -376,17 +451,17 @@ export const updateDriverPoints = async (driverId: string, amount: number, reaso
              }
              user.pointsBalance += amount;
              
-             const txs: PointTransaction[] = loadMock(DB_KEYS.TX, []);
+             const txs: PointTransaction[] = loadMock(DB_KEYS.TX, SEED_TX);
              txs.unshift({ 
                  id: `t${Date.now()}`, 
                  date: new Date().toISOString().split('T')[0], 
                  amount, 
                  reason, 
                  sponsorName, 
+                 driverName: user.fullName, // Capture real name for reporting
                  type: type 
              });
              
-             // System notification for point change
              if (user.preferences?.alertsEnabled !== false) {
                  await addNotification(
                      driverId,
@@ -407,7 +482,7 @@ export const updateDriverPoints = async (driverId: string, amount: number, reaso
 };
 
 export const getTransactions = async (): Promise<PointTransaction[]> => {
-    if (useMockDB()) return loadMock(DB_KEYS.TX, [{ id: 't1', date: '2026-01-15', amount: 500, reason: 'Safe Driving Bonus', sponsorName: 'FastLane Logistics', type: 'MANUAL' }]);
+    if (useMockDB()) return loadMock(DB_KEYS.TX, SEED_TX);
     return await MySQL.apiGetTransactions();
 };
 
@@ -430,7 +505,6 @@ export const addProduct = async (product: Partial<Product>) => {
         });
         persistMock(DB_KEYS.CATALOG, products);
     }
-    // Prod not implemented for this action
 }
 
 export const deleteProduct = async (id: string) => {
@@ -441,10 +515,8 @@ export const deleteProduct = async (id: string) => {
     }
 }
 
-export const MOCK_USERS_SYNC = SEED_USERS; 
-
 // Helpers
-const _addMockLog = (action: string, actor: string, target: string, details: string, category: AuditLog['category']) => {
+export const addAuditLog = async (action: string, actor: string, target: string, details: string, category: AuditLog['category']) => {
     const logs: AuditLog[] = loadMock(DB_KEYS.LOGS, SEED_AUDIT_LOGS);
     logs.unshift({ id: `l${Date.now()}`, date: new Date().toISOString().split('T')[0], action, actor, target, details, category });
     persistMock(DB_KEYS.LOGS, logs);

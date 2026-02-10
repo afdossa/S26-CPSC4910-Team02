@@ -4,7 +4,7 @@ import { User, UserRole, DriverApplication, SponsorOrganization, PointTransactio
 import { submitApplication, getDriverApplication, getSponsors, getTransactions, updateUserPreferences, getUserProfile, getCatalog, updateSponsorRules, getNotifications, markNotificationAsRead } from '../services/mockData';
 import { triggerRedshiftArchive } from '../services/mysql';
 import { getConfig, updateConfig, isTestMode } from '../services/config';
-import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X, DollarSign, RefreshCw, User as UserIcon, Receipt, Package, Inbox, Calendar, Settings } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X, DollarSign, RefreshCw, User as UserIcon, Receipt, Package, Inbox, Calendar, Settings, Globe } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
@@ -546,7 +546,7 @@ const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
                      </div>
                      <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-100 dark:border-green-900">
                          <h3 className="text-green-800 dark:text-green-300 font-semibold">Pending Applications</h3>
-                         <p className="text-3xl font-bold text-green-900 dark:text-green-100 mt-2">3</p>
+                         <p className="text-3xl font-bold text-green-900 dark:text-blue-100 mt-2">3</p>
                      </div>
                      <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg border border-purple-100 dark:border-purple-900">
                          <h3 className="text-purple-800 dark:text-purple-300 font-semibold">Points Awarded (Month)</h3>
@@ -774,18 +774,34 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
                          Critical Actions
                      </h3>
                  </div>
-                 <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                     <Link to="/admin/sponsors" className="text-left p-4 border border-gray-200 dark:border-slate-600 rounded hover:bg-gray-50 dark:hover:bg-slate-700 block">
-                         <div className="font-semibold text-gray-900 dark:text-white">Create New Sponsor</div>
-                         <div className="text-sm text-gray-500 dark:text-gray-400">Onboard a new organization to the platform.</div>
+                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                     <Link to="/admin/sponsors" className="text-left p-4 border border-gray-200 dark:border-slate-600 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-700 block transition-all hover:shadow-md">
+                         <div className="flex items-center mb-2">
+                             <Building className="w-5 h-5 text-indigo-500 mr-2" />
+                             <div className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-wider">Sponsors</div>
+                         </div>
+                         <div className="text-xs text-gray-500 dark:text-gray-400">Onboard and manage organizational partners.</div>
                      </Link>
-                     <Link to="/admin/users" className="text-left p-4 border border-gray-200 dark:border-slate-600 rounded hover:bg-gray-50 dark:hover:bg-slate-700 block">
-                         <div className="font-semibold text-gray-900 dark:text-white">Manage Users</div>
-                         <div className="text-sm text-gray-500 dark:text-gray-400">Manually create or manage accounts.</div>
+                     <Link to="/admin/users" className="text-left p-4 border border-gray-200 dark:border-slate-600 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-700 block transition-all hover:shadow-md">
+                         <div className="flex items-center mb-2">
+                             <UserIcon className="w-5 h-5 text-blue-500 mr-2" />
+                             <div className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-wider">User List</div>
+                         </div>
+                         <div className="text-xs text-gray-500 dark:text-gray-400">Manage account roles, bans, and profiles.</div>
                      </Link>
-                     <Link to="/reports?tab=audit" className="text-left p-4 border border-gray-200 dark:border-slate-600 rounded hover:bg-gray-50 dark:hover:bg-slate-700 block">
-                         <div className="font-semibold text-gray-900 dark:text-white">System Logs</div>
-                         <div className="text-sm text-gray-500 dark:text-gray-400">View detailed audit logs for security.</div>
+                     <Link to="/admin/settings" className="text-left p-4 border border-gray-200 dark:border-slate-600 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-700 block transition-all hover:shadow-md">
+                         <div className="flex items-center mb-2">
+                             <Globe className="w-5 h-5 text-green-500 mr-2" />
+                             <div className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-wider">Settings</div>
+                         </div>
+                         <div className="text-xs text-gray-500 dark:text-gray-400">Global system rules and maintenance mode.</div>
+                     </Link>
+                     <Link to="/reports?tab=audit" className="text-left p-4 border border-gray-200 dark:border-slate-600 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-700 block transition-all hover:shadow-md">
+                         <div className="flex items-center mb-2">
+                             <Receipt className="w-5 h-5 text-amber-500 mr-2" />
+                             <div className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-wider">Audit Logs</div>
+                         </div>
+                         <div className="text-xs text-gray-500 dark:text-gray-400">Review security and transaction history.</div>
                      </Link>
                  </div>
              </div>

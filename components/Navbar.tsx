@@ -1,8 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { User, UserRole, Notification } from '../types';
-import { Truck, LogOut, LayoutDashboard, ShoppingBag, FileBarChart, Info, User as UserIcon, Menu, X, Bell, Settings } from 'lucide-react';
-import { authService } from '../services/auth';
+import { Link, useLocation } from 'react-router-dom';
+import { User, UserRole } from '../types';
+import { Truck, LogOut, LayoutDashboard, ShoppingBag, FileBarChart, Info, Menu, X, Bell, Settings } from 'lucide-react';
 import { getNotifications } from '../services/mockData';
 import { SettingsModal } from './SettingsModal';
 
@@ -15,7 +15,6 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, isDark, toggleTheme }) => {
   const location = useLocation();
-  const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -33,18 +32,15 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, isDark, toggleTh
 
     fetchUnread();
     
-    // Simple event based refresh for badge
     const handleRefresh = () => fetchUnread();
     window.addEventListener('notification-added', handleRefresh);
     return () => window.removeEventListener('notification-added', handleRefresh);
   }, [user]);
 
   const handleLogout = () => {
-      authService.logout().then(() => {
-          onLogout();
-          navigate('/login');
-          setIsMobileMenuOpen(false);
-      });
+      onLogout(); // This triggers the App state update
+      setIsMobileMenuOpen(false);
+      // Removed programmatic navigate('/login') - App.tsx declarative routes handle this
   };
 
   const isActive = (path: string, exact = true) => {
@@ -73,21 +69,21 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, isDark, toggleTh
               <div className="bg-blue-600 p-2 rounded-lg">
                 <Truck className="h-6 w-6 text-white" />
               </div>
-              <span className="font-bold text-xl text-slate-800 dark:text-white hidden sm:block">DriveWell</span>
+              <span className="font-bold text-xl text-slate-800 dark:text-white hidden sm:block tracking-tighter uppercase">DriveWell</span>
             </Link>
             
             <div className="hidden md:ml-8 md:flex md:space-x-8">
               {user && (
-                <Link to="/dashboard" className={`inline-flex items-center px-1 pt-1 text-sm font-medium ${isActive('/dashboard')}`}>
+                <Link to="/dashboard" className={`inline-flex items-center px-1 pt-1 text-sm font-bold uppercase tracking-widest transition-all ${isActive('/dashboard')}`}>
                   <LayoutDashboard className="w-4 h-4 mr-2" />
                   Dashboard
                 </Link>
               )}
               
               {user?.role === UserRole.DRIVER && (
-                <Link to="/dashboard?tab=notifications" className={`inline-flex items-center px-1 pt-1 text-sm font-medium relative ${isNotificationActive()}`}>
+                <Link to="/dashboard?tab=notifications" className={`inline-flex items-center px-1 pt-1 text-sm font-bold uppercase tracking-widest relative transition-all ${isNotificationActive()}`}>
                   <Bell className="w-4 h-4 mr-2" />
-                  Notifications
+                  Alerts
                   {unreadCount > 0 && (
                       <span className="absolute -top-1 -right-2 h-4 w-4 bg-red-500 text-white text-[8px] flex items-center justify-center rounded-full border border-white dark:border-slate-800">
                           {unreadCount}
@@ -97,20 +93,20 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, isDark, toggleTh
               )}
 
               {user?.role === UserRole.DRIVER && (
-                <Link to="/catalog" className={`inline-flex items-center px-1 pt-1 text-sm font-medium ${isActive('/catalog')}`}>
+                <Link to="/catalog" className={`inline-flex items-center px-1 pt-1 text-sm font-bold uppercase tracking-widest transition-all ${isActive('/catalog')}`}>
                   <ShoppingBag className="w-4 h-4 mr-2" />
                   Catalog
                 </Link>
               )}
               
               {(user?.role === UserRole.ADMIN || user?.role === UserRole.SPONSOR) && (
-                 <Link to="/reports" className={`inline-flex items-center px-1 pt-1 text-sm font-medium ${isActive('/reports')}`}>
+                 <Link to="/reports" className={`inline-flex items-center px-1 pt-1 text-sm font-bold uppercase tracking-widest transition-all ${isActive('/reports')}`}>
                  <FileBarChart className="w-4 h-4 mr-2" />
                  Reports
                </Link>
               )}
 
-              <Link to="/about" className={`inline-flex items-center px-1 pt-1 text-sm font-medium ${isActive('/about')}`}>
+              <Link to="/about" className={`inline-flex items-center px-1 pt-1 text-sm font-bold uppercase tracking-widest transition-all ${isActive('/about')}`}>
                 <Info className="w-4 h-4 mr-2" />
                 About
               </Link>
@@ -118,10 +114,9 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, isDark, toggleTh
           </div>
 
           <div className="flex items-center space-x-4">
-            {/* Settings Gear - Always Visible */}
             <button 
                 onClick={() => setIsSettingsOpen(true)}
-                className="p-2 rounded-full text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 dark:hover:text-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="p-2 rounded-full text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-slate-700 dark:hover:text-blue-400 transition-colors focus:outline-none"
                 title="Application Settings"
             >
                 <Settings className="w-5 h-5" />
@@ -131,12 +126,12 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, isDark, toggleTh
               {user ? (
                 <div className="flex items-center space-x-4">
                   <div className="flex flex-col items-end">
-                    <span className="text-sm font-medium text-slate-900 dark:text-white">{user.fullName}</span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">{user.role}</span>
+                    <span className="text-sm font-black text-slate-900 dark:text-white leading-none">{user.fullName}</span>
+                    <span className="text-[10px] font-black uppercase tracking-tighter text-slate-500 dark:text-slate-400">{user.role}</span>
                   </div>
                   {user.role === UserRole.DRIVER && (
-                    <div className="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-3 py-1 rounded-full text-sm font-bold border border-amber-200 dark:border-amber-700">
-                      {user.pointsBalance?.toLocaleString()} pts
+                    <div className="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-3 py-1 rounded-full text-xs font-black border border-amber-200 dark:border-amber-700">
+                      {user.pointsBalance?.toLocaleString()} PTS
                     </div>
                   )}
                   <Link to="/profile" className="h-8 w-8 rounded-full bg-slate-200 dark:bg-slate-600 overflow-hidden border border-slate-300 dark:border-slate-500 hover:ring-2 hover:ring-blue-500 transition-all">
@@ -151,7 +146,7 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, isDark, toggleTh
                   </button>
                 </div>
               ) : (
-                 <Link to="/login" className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm">
+                 <Link to="/login" className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 dark:shadow-none">
                    Login
                  </Link>
               )}
@@ -163,7 +158,6 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, isDark, toggleTh
                 type="button"
                 className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
               >
-                <span className="sr-only">Open main menu</span>
                 {isMobileMenuOpen ? (
                   <X className="block h-6 w-6" aria-hidden="true" />
                 ) : (

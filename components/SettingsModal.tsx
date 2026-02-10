@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { X, Moon, Sun, Database, Server, RefreshCw, AlertTriangle, Trash2, Power } from 'lucide-react';
 import { isTestMode, updateConfig, resetToDefaults } from '../services/config';
@@ -25,17 +26,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, i
 
     const handleTestModeToggle = () => {
         const newState = !testMode;
+        // Fix: Remove the second argument 'false' on line 33 as updateConfig expects only one argument (Partial<ServiceConfig>)
         updateConfig({
             useMockAuth: newState,
             useMockDB: newState,
             useMockRedshift: newState
-        }, false);
+        });
     };
 
     const handleResetData = () => {
         if (confirmReset) {
-            resetDatabase(); // Clears mock data
-            resetToDefaults(true); // Clears config and reloads
+            resetDatabase(); // Clears mock data and dispatches event
+            resetToDefaults(); // Clears config and dispatches event
+            setConfirmReset(false);
+            onClose();
         } else {
             setConfirmReset(true);
             setTimeout(() => setConfirmReset(false), 3000); // Reset confirm state after 3s

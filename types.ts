@@ -17,9 +17,18 @@ export interface User {
   bio?: string; // Personal description for profile
   sponsorId?: string; // Links driver to a sponsor
   pointsBalance?: number; // Only for drivers
+  isActive?: boolean; // Track if account is banned/active
   preferences?: {
     alertsEnabled: boolean;
   };
+}
+
+export interface GlobalSettings {
+  minRedemptionPoints: number;
+  isRegistrationEnabled: boolean;
+  maintenanceMode: boolean;
+  systemContactEmail: string;
+  allowDriverPasswordResets: boolean;
 }
 
 export interface Notification {
@@ -79,6 +88,7 @@ export interface PointTransaction {
   amount: number;
   reason: string;
   sponsorName: string;
+  driverName?: string; // Added to track who received the points
   type?: 'MANUAL' | 'AUTOMATED' | 'PURCHASE'; 
 }
 

@@ -76,7 +76,6 @@ export const triggerRedshiftArchive = async (): Promise<boolean> => {
 
     try {
         console.log("[AWS] Triggering Real AWS Glue ETL job...");
-        // In reality: await fetch(`${AWS_API_CONFIG.baseUrl}/system/archive`, { method: 'POST', headers });
         await new Promise(resolve => setTimeout(resolve, 2000)); 
         return true;
     } catch (e) {
@@ -87,9 +86,7 @@ export const triggerRedshiftArchive = async (): Promise<boolean> => {
 
 // --- USER MANAGEMENT ---
 export const apiGetUserProfile = async (uid: string): Promise<User | undefined> => {
-    // Simulate Network Latency
     await new Promise(r => setTimeout(r, 300));
-    
     const db = loadProdDB();
     return db.users.find(u => u.id === uid);
 };
@@ -103,10 +100,7 @@ export const apiGetAllUsers = async (): Promise<User[]> => {
 export const apiCreateProfile = async (user: User): Promise<boolean> => {
     await new Promise(r => setTimeout(r, 300));
     const db = loadProdDB();
-    
-    // Check if duplicate ID exists
     if (db.users.some(u => u.id === user.id)) return false; 
-    
     db.users.push(user);
     saveProdDB(db);
     return true;
@@ -118,6 +112,30 @@ export const apiUpdateUserRole = async (userId: string, newRole: UserRole): Prom
     const user = db.users.find(u => u.id === userId);
     if (user) {
         user.role = newRole;
+        saveProdDB(db);
+        return true;
+    }
+    return false;
+};
+
+export const apiBanUser = async (userId: string, active: boolean): Promise<boolean> => {
+    await new Promise(r => setTimeout(r, 200));
+    const db = loadProdDB();
+    const user = db.users.find(u => u.id === userId);
+    if (user) {
+        user.isActive = active;
+        saveProdDB(db);
+        return true;
+    }
+    return false;
+};
+
+export const apiDeleteUser = async (userId: string): Promise<boolean> => {
+    await new Promise(r => setTimeout(r, 200));
+    const db = loadProdDB();
+    const index = db.users.findIndex(u => u.id === userId);
+    if (index !== -1) {
+        db.users.splice(index, 1);
         saveProdDB(db);
         return true;
     }
@@ -217,7 +235,6 @@ export const apiGetCatalog = async (): Promise<Product[]> => {
 // --- APPLICATIONS ---
 export const apiSubmitApplication = async (app: DriverApplication): Promise<boolean> => {
     const db = loadProdDB();
-    // Remove existing pending for this user
     db.applications = db.applications.filter(a => !(a.userId === app.userId && a.status === 'PENDING'));
     app.id = `app${Date.now()}`;
     db.applications.push(app);
@@ -254,7 +271,6 @@ export const apiUpdateDriverPoints = async (userId: string, amount: number, reas
     
     if (!user) return { success: false, message: "User not found" };
     
-    // Check Floor
     const sponsor = db.sponsors.find(s => s.id === sponsorId);
     if (amount < 0) {
         const current = user.pointsBalance || 0;
@@ -275,7 +291,6 @@ export const apiUpdateDriverPoints = async (userId: string, amount: number, reas
         type: type
     });
 
-    // Add persistent system notification for point change in production simulation
     if (user.preferences?.alertsEnabled !== false) {
         const notif: Notification = {
             id: `pn${Date.now()}`,
