@@ -418,17 +418,41 @@ export const processApplication = async (appId: string, approved: boolean) => {
         const apps: DriverApplication[] = loadMock(DB_KEYS.APPS, []);
         const app = apps.find(a => a.id === appId);
         if (!app) return false;
+        
+        const previousStatus = app.status;
         app.status = approved ? 'APPROVED' : 'REJECTED';
         
-        if (approved) {
-            const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
-            const user = users.find(u => u.id === app.userId);
-            if (user) {
-                user.sponsorId = app.sponsorId;
-                if (user.pointsBalance === undefined) user.pointsBalance = 0;
-                persistMock(DB_KEYS.USERS, users);
-            }
+        // Find Sponsor Name for notification context
+        const sponsors: SponsorOrganization[] = loadMock(DB_KEYS.SPONSORS, SEED_SPONSORS);
+        const sponsorName = sponsors.find(s => s.id === app.sponsorId)?.name || 'the organization';
+
+        // Retrieve User to get current email (supports Google Sign-In emails)
+        const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
+        const user = users.find(u => u.id === app.userId);
+        
+        // Use user profile email if available (more reliable for Auth providers), otherwise app email
+        let targetEmail = user?.email || app.email;
+
+        if (approved && user) {
+            user.sponsorId = app.sponsorId;
+            if (user.pointsBalance === undefined) user.pointsBalance = 0;
+            persistMock(DB_KEYS.USERS, users);
         }
+
+        // Send Notification if status changed
+        if (previousStatus !== app.status) {
+             const statusMsg = approved ? 'Approved' : 'Rejected';
+             const message = `Your application to join ${sponsorName} has been ${statusMsg.toLowerCase()}. An email alert has been sent to ${targetEmail}.`;
+             
+             await addNotification(
+                app.userId,
+                `Application ${statusMsg}`,
+                message,
+                'SYSTEM',
+                { appId: app.id, status: app.status, emailSentTo: targetEmail }
+            );
+        }
+
         persistMock(DB_KEYS.APPS, apps);
         return true;
     }
