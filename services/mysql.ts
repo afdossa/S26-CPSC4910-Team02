@@ -271,13 +271,27 @@ export const apiProcessApplication = async (appId: string, status: string): Prom
     
     app.status = status as any;
     
-    if (status === 'APPROVED') {
-        const user = db.users.find(u => u.id === app.userId);
-        if (user) {
-            user.sponsorId = app.sponsorId;
-            user.pointsBalance = 0;
-        }
+    // Find User for email - Prefer user profile email if available (e.g. Google Sign in)
+    const user = db.users.find(u => u.id === app.userId);
+    let targetEmail = user?.email || app.email;
+
+    if (status === 'APPROVED' && user) {
+        user.sponsorId = app.sponsorId;
+        user.pointsBalance = 0;
     }
+
+    // Add Notification
+    if(!db.notifications) db.notifications = [];
+    db.notifications.push({
+        id: `sys_notif_${Date.now()}`,
+        userId: app.userId,
+        title: `Application ${status}`,
+        message: `Your application status has been updated to ${status}. Alert sent to ${targetEmail}.`,
+        date: new Date().toISOString(),
+        isRead: false,
+        type: 'SYSTEM'
+    });
+
     saveProdDB(db);
     return true;
 };
