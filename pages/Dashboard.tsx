@@ -4,7 +4,7 @@ import { User, UserRole, DriverApplication, SponsorOrganization, PointTransactio
 import { submitApplication, getDriverApplication, getSponsors, getTransactions, updateUserPreferences, getUserProfile, getCatalog, updateSponsorRules, getNotifications, markNotificationAsRead } from '../services/mockData';
 import { triggerRedshiftArchive } from '../services/mysql';
 import { getConfig, updateConfig, isTestMode } from '../services/config';
-import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X, DollarSign, RefreshCw, User as UserIcon, Receipt, Package, Inbox, Calendar, Settings, Globe, Download } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X, DollarSign, RefreshCw, User as UserIcon, Receipt, Package, Inbox, Calendar, Settings, Globe, Download, Activity, Award, BarChart3 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
@@ -150,6 +150,24 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
       link.click();
       document.body.removeChild(link);
   };
+
+  // Performance Calculations
+  const calculatePerformance = () => {
+      const positiveTx = transactions.filter(t => t.amount > 0);
+      const totalEarned = positiveTx.reduce((acc, t) => acc + t.amount, 0);
+      
+      const monthlyTotals: { [key: string]: number } = {};
+      positiveTx.forEach(t => {
+          const month = t.date.substring(0, 7); // YYYY-MM
+          monthlyTotals[month] = (monthlyTotals[month] || 0) + t.amount;
+      });
+      const uniqueMonths = Object.keys(monthlyTotals).length;
+      const avgMonthly = uniqueMonths > 0 ? Math.round(totalEarned / uniqueMonths) : 0;
+      
+      return { totalEarned, avgMonthly, uniqueMonths };
+  };
+
+  const stats = calculatePerformance();
 
   if (loading) return <div className="p-10 text-center dark:text-gray-300">Loading dashboard data...</div>;
 
@@ -333,27 +351,59 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
                     </div>
                 </div>
 
+                {!isPending && (
+                    <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-2xl border border-gray-100 dark:border-slate-700">
+                        <div className="px-6 py-5 flex items-center border-b border-gray-100 dark:border-slate-700">
+                            <Activity className="h-5 w-5 text-indigo-500 mr-2" />
+                            <h3 className="text-lg leading-6 font-bold text-gray-900 dark:text-white">Performance Insights</h3>
+                        </div>
+                        <div className="p-6 grid grid-cols-2 gap-4">
+                            <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800/50">
+                                <div className="text-[10px] font-black uppercase text-indigo-400 tracking-widest mb-1 flex items-center">
+                                    <BarChart3 className="w-3 h-3 mr-1" />
+                                    Avg Earned / Month
+                                </div>
+                                <div className="text-2xl font-black text-indigo-900 dark:text-indigo-100">
+                                    {stats.avgMonthly.toLocaleString()}
+                                </div>
+                            </div>
+                            <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800/50">
+                                <div className="text-[10px] font-black uppercase text-emerald-500 tracking-widest mb-1 flex items-center">
+                                    <Award className="w-3 h-3 mr-1" />
+                                    Total Earnings
+                                </div>
+                                <div className="text-2xl font-black text-emerald-900 dark:text-emerald-100">
+                                    {stats.totalEarned.toLocaleString()}
+                                </div>
+                            </div>
+                            <div className="col-span-2 text-center text-xs text-gray-400 mt-2">
+                                Based on {stats.uniqueMonths} month{stats.uniqueMonths !== 1 ? 's' : ''} of activity.
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {!isPending && activeSponsor && (
-                    <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-2xl border border-gray-100 dark:border-slate-700 lg:col-span-2">
-                        <div className="px-6 py-5">
-                            <div className="flex items-center mb-4">
+                    <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-2xl border border-gray-100 dark:border-slate-700">
+                        <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-700">
+                            <div className="flex items-center">
                                 <Info className="h-5 w-5 text-blue-500 mr-2" />
                                 <h3 className="text-lg leading-6 font-bold text-gray-900 dark:text-white">How to Earn Points</h3>
                             </div>
-                            <div className="prose prose-sm text-gray-500 dark:text-gray-400">
-                                {activeSponsor.incentiveRules && activeSponsor.incentiveRules.length > 0 ? (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {activeSponsor.incentiveRules.map((rule, idx) => (
-                                            <div key={idx} className="flex items-center p-3 bg-gray-50 dark:bg-slate-700/50 rounded-xl text-gray-700 dark:text-gray-200 font-medium border border-transparent hover:border-blue-100 dark:hover:border-blue-800 transition-colors">
-                                                <div className="h-2 w-2 bg-blue-50 rounded-full mr-3"></div>
-                                                {rule}
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="italic">No specific rules listed by sponsor.</p>
-                                )}
-                            </div>
+                        </div>
+                        <div className="px-6 py-6 prose prose-sm text-gray-500 dark:text-gray-400 h-full">
+                            {activeSponsor.incentiveRules && activeSponsor.incentiveRules.length > 0 ? (
+                                <ul className="space-y-3">
+                                    {activeSponsor.incentiveRules.map((rule, idx) => (
+                                        <li key={idx} className="flex items-start text-sm">
+                                            <div className="h-2 w-2 bg-blue-400 rounded-full mr-3 mt-1.5 flex-shrink-0"></div>
+                                            <span>{rule}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="italic">No specific rules listed by sponsor.</p>
+                            )}
                         </div>
                     </div>
                 )}
@@ -571,7 +621,6 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
 };
 
 const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
-    // ... existing SponsorDashboard code ...
     const [sponsorOrg, setSponsorOrg] = useState<SponsorOrganization | undefined>(undefined);
     const [newRule, setNewRule] = useState('');
     const [loading, setLoading] = useState(true);
@@ -671,7 +720,6 @@ const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
 };
 
 const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
-    // ... existing AdminDashboard code ...
     const [config, setConfig] = useState(getConfig());
     const [archiving, setArchiving] = useState(false);
 
