@@ -1,27 +1,33 @@
-import React, { useState, useEffect } from 'react';
-import { User, UserRole, DriverApplication, SponsorOrganization, PointTransaction } from '../types';
-import { submitApplication, getDriverApplication, getSponsors, getTransactions, updateUserPreferences, getUserProfile, getCatalog, updateSponsorRules } from '../services/mockData';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { User, UserRole, DriverApplication, SponsorOrganization, PointTransaction, Notification, CartItem } from '../types';
+import { submitApplication, getDriverApplication, getSponsors, getTransactions, updateUserPreferences, getUserProfile, getCatalog, updateSponsorRules, getNotifications, markNotificationAsRead } from '../services/mockData';
 import { triggerRedshiftArchive } from '../services/mysql';
 import { getConfig, updateConfig, isTestMode } from '../services/config';
-import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X, DollarSign, RefreshCw, User as UserIcon, Receipt, Package, Inbox, Calendar, Settings, Globe, Download } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
   user: User;
 }
 
 const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  const [activeTab, setActiveTab] = useState<'overview' | 'notifications'>('overview');
   const [pendingApp, setPendingApp] = useState<DriverApplication | undefined>(undefined);
   const [sponsors, setSponsors] = useState<SponsorOrganization[]>([]);
   const [transactions, setTransactions] = useState<PointTransaction[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newCatalogItems, setNewCatalogItems] = useState(0);
   const [activeSponsor, setActiveSponsor] = useState<SponsorOrganization | undefined>(undefined);
+  const [showAsDollars, setShowAsDollars] = useState(false);
   
   // Application Form State
   const [sponsorId, setSponsorId] = useState('');
   const [license, setLicense] = useState('');
-  const [experience, setExperience] = useState(''); // Text state for better UX
+  const [experience, setExperience] = useState(''); 
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -31,50 +37,57 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
   // Filter State
   const [historyFilter, setHistoryFilter] = useState<'ALL' | 'MANUAL' | 'PURCHASE'>('ALL');
 
-  useEffect(() => {
-    const loadData = async () => {
-        setLoading(true);
-        try {
-            const [app, spList, txList, freshUser, products] = await Promise.all([
-                getDriverApplication(user.id),
-                getSponsors(),
-                getTransactions(), // In real app, filter by user.id
-                getUserProfile(user.id),
-                getCatalog()
-            ]);
-            setPendingApp(app);
-            setSponsors(spList);
-            setTransactions(txList);
-            
-            if (freshUser && freshUser.preferences) {
-                setAlertsEnabled(freshUser.preferences.alertsEnabled);
-            }
-            if (spList.length > 0) setSponsorId(spList[0].id);
-
-            // Find Active Sponsor
-            if (freshUser?.sponsorId) {
-                setActiveSponsor(spList.find(s => s.id === freshUser.sponsorId));
-            }
-
-            // Check for new products (last 7 days)
-            const oneWeekAgo = new Date();
-            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-            const newCount = products.filter(p => p.createdAt && new Date(p.createdAt) > oneWeekAgo).length;
-            setNewCatalogItems(newCount);
-
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+        const [app, spList, txList, freshUser, products, notifList] = await Promise.all([
+            getDriverApplication(user.id),
+            getSponsors(),
+            getTransactions(), 
+            getUserProfile(user.id),
+            getCatalog(),
+            getNotifications(user.id)
+        ]);
+        setPendingApp(app);
+        setSponsors(spList);
+        setTransactions(txList);
+        setNotifications(notifList);
+        
+        if (freshUser && freshUser.preferences) {
+            setAlertsEnabled(freshUser.preferences.alertsEnabled);
         }
-    };
+        if (spList.length > 0) setSponsorId(spList[0].id);
+
+        if (freshUser?.sponsorId) {
+            setActiveSponsor(spList.find(s => s.id === freshUser.sponsorId));
+        }
+    } catch (e) {
+        console.error(e);
+    } finally {
+        setLoading(false);
+    }
+  }, [user.id]);
+
+  useEffect(() => {
     loadData();
-  }, [user.id, user.sponsorId]);
+    const handleRefresh = () => loadData();
+    window.addEventListener('notification-added', handleRefresh);
+    return () => window.removeEventListener('notification-added', handleRefresh);
+  }, [loadData]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab === 'notifications') {
+        setActiveTab('notifications');
+    } else {
+        setActiveTab('overview');
+    }
+  }, [location.search]);
 
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    // Convert experience string back to number for submission
     if (await submitApplication(user.id, sponsorId, { licenseNumber: license, experienceYears: Number(experience), reason })) {
        const app = await getDriverApplication(user.id);
        setPendingApp(app);
@@ -97,27 +110,67 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
       return true;
   });
 
-  if (loading) return <div className="p-10 text-center">Loading dashboard data...</div>;
+  const getPointsValueUSD = () => {
+    const ratio = activeSponsor?.pointDollarRatio || 0.01;
+    const value = (user.pointsBalance || 0) * ratio;
+    return value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  };
 
-  // Case 1: No Sponsor AND No Pending Application -> Show Application Form
+  const handleReadNotification = async (id: string) => {
+      await markNotificationAsRead(id);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+  };
+
+  const downloadHistoryCSV = () => {
+      if (transactions.length === 0) {
+          alert("No transaction history to export.");
+          return;
+      }
+
+      const headers = ['Date', 'Type', 'Sponsor', 'Reason', 'Amount'];
+      const rows = transactions.map(t => [
+          t.date,
+          t.type || 'UNKNOWN',
+          `"${t.sponsorName.replace(/"/g, '""')}"`,
+          `"${t.reason.replace(/"/g, '""')}"`,
+          t.amount.toString()
+      ]);
+
+      const csvContent = [
+          headers.join(','),
+          ...rows.map(r => r.join(','))
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `drivewell_history_${user.username}_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  };
+
+  if (loading) return <div className="p-10 text-center dark:text-gray-300">Loading dashboard data...</div>;
+
   if (!user.sponsorId && !pendingApp) {
       return (
           <div className="max-w-2xl mx-auto space-y-6">
-              <div className="bg-white overflow-hidden shadow rounded-lg p-6">
+              <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
                   <div className="text-center mb-8">
-                      <h2 className="text-3xl font-bold text-gray-900">Welcome, {user.fullName}!</h2>
-                      <p className="mt-2 text-lg text-gray-600">To start earning points, you need to join a Sponsor Organization.</p>
+                      <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Welcome, {user.fullName}!</h2>
+                      <p className="mt-2 text-lg text-gray-600 dark:text-gray-400">To start earning points, you need to join a Sponsor Organization.</p>
                   </div>
 
-                  <div className="border border-gray-200 rounded-lg p-6">
-                      <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                  <div className="border border-gray-200 dark:border-slate-700 rounded-lg p-6">
+                      <h3 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center">
                           <Building className="w-5 h-5 mr-2" /> Apply to a Sponsor
                       </h3>
                       <form onSubmit={handleApply} className="space-y-4">
                           <div>
-                              <label className="block text-sm font-medium text-gray-700">Select Sponsor</label>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Select Sponsor</label>
                               <select
-                                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md bg-white border"
+                                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-slate-600 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md bg-white dark:bg-slate-700 dark:text-white border"
                                   value={sponsorId}
                                   onChange={(e) => setSponsorId(e.target.value)}
                               >
@@ -127,22 +180,22 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
                               </select>
                           </div>
                           <div>
-                              <label className="block text-sm font-medium text-gray-700">CDL License Number</label>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">CDL License Number</label>
                               <input 
                                   type="text" required 
-                                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                                  className="mt-1 block w-full border border-gray-300 dark:border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-700 dark:text-white"
                                   value={license}
                                   onChange={(e) => setLicense(e.target.value)}
                               />
                           </div>
                           <div>
-                              <label className="block text-sm font-medium text-gray-700">Years of Experience</label>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Years of Experience</label>
                               <input 
                                   type="text" 
                                   inputMode="numeric"
                                   pattern="[0-9]*"
                                   required 
-                                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                                  className="mt-1 block w-full border border-gray-300 dark:border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-700 dark:text-white"
                                   value={experience}
                                   onChange={(e) => {
                                       const val = e.target.value;
@@ -152,11 +205,11 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
                               />
                           </div>
                            <div>
-                              <label className="block text-sm font-medium text-gray-700">Why do you want to join us?</label>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Why do you want to join us?</label>
                               <textarea 
                                   required
                                   rows={3}
-                                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
+                                  className="mt-1 block w-full border border-gray-300 dark:border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-700 dark:text-white"
                                   value={reason}
                                   onChange={(e) => setReason(e.target.value)}
                               />
@@ -179,7 +232,6 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
       );
   }
 
-  // Case 2: Show Dashboard (Active or Pending)
   const isPending = !user.sponsorId && !!pendingApp;
   const displaySponsorName = isPending 
       ? sponsors.find(s => s.id === pendingApp?.sponsorId)?.name 
@@ -187,214 +239,339 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
 
   return (
     <div className="space-y-6">
-      {/* Notifications */}
-      {isPending && (
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-              <div className="flex">
-                  <div className="flex-shrink-0">
-                      <Clock className="h-5 w-5 text-yellow-400" aria-hidden="true" />
-                  </div>
-                  <div className="ml-3">
-                      <p className="text-sm text-yellow-700">
-                          <span className="font-bold">Application Pending:</span> Waiting for acceptance from <span className="font-bold">{displaySponsorName}</span>. 
-                          <br/>
-                          You will be notified once you are confirmed. Your dashboard features are currently in preview mode.
-                      </p>
-                  </div>
-              </div>
-          </div>
-      )}
+      <div className="flex border-b border-gray-200 dark:border-slate-700">
+          <button 
+            onClick={() => { setActiveTab('overview'); navigate('/dashboard'); }}
+            className={`px-6 py-3 text-sm font-bold uppercase tracking-wider border-b-2 transition-all ${activeTab === 'overview' ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
+          >
+              Overview
+          </button>
+          <button 
+            onClick={() => { setActiveTab('notifications'); navigate('/dashboard?tab=notifications'); }}
+            className={`px-6 py-3 text-sm font-bold uppercase tracking-wider border-b-2 transition-all flex items-center ${activeTab === 'notifications' ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
+          >
+              Notifications
+              {notifications.filter(n => !n.isRead).length > 0 && (
+                  <span className="ml-2 h-5 w-5 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full animate-pulse">
+                      {notifications.filter(n => !n.isRead).length}
+                  </span>
+              )}
+          </button>
+      </div>
 
-      {newCatalogItems > 0 && alertsEnabled && !isPending && (
-          <div className="bg-blue-50 border-l-4 border-blue-400 p-4 flex justify-between items-start">
-             <div className="flex">
-                 <div className="flex-shrink-0">
-                     <Info className="h-5 w-5 text-blue-400" aria-hidden="true" />
-                 </div>
-                 <div className="ml-3">
-                     <p className="text-sm text-blue-700">
-                         <span className="font-bold">New Rewards Available!</span> {newCatalogItems} new items have been added to the catalog recently.
-                     </p>
-                     <Link to="/catalog" className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-500 inline-block">View Catalog &rarr;</Link>
-                 </div>
-             </div>
-             <button onClick={() => setNewCatalogItems(0)} className="text-blue-400 hover:text-blue-500">
-                 <X className="w-5 h-5" />
-             </button>
-         </div>
-      )}
-
-      {/* Grid for Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Driver Stats Card */}
-          <div className="bg-white overflow-hidden shadow rounded-lg col-span-1 lg:col-span-2">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <ShieldCheck className="h-10 w-10 text-green-500" aria-hidden="true" />
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate flex items-center">
-                        Current Points Balance
-                        {!isPending && (user.pointsBalance || 0) > 1000 && (
-                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                <CheckCircle className="w-3 h-3 mr-1" /> Good Driver
-                            </span>
-                        )}
-                    </dt>
-                    <dd>
-                      <div className="text-3xl font-bold text-gray-900">
-                          {isPending ? 'N/A' : user.pointsBalance?.toLocaleString()}
-                      </div>
-                    </dd>
-                    <dt className="text-xs text-gray-400 mt-1">Sponsor: {displaySponsorName} {isPending ? '(Pending)' : ''}</dt>
-                  </dl>
-
-                  {!isPending && (
-                    <div className="mt-3">
-                        <div className="flex justify-between text-xs text-gray-400 mb-1">
-                            <span>Reward Tier Progress</span>
-                            <span>5,000 pts</span>
+      {activeTab === 'overview' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            {isPending && (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 p-4">
+                    <div className="flex">
+                        <div className="flex-shrink-0">
+                            <Clock className="h-5 w-5 text-yellow-400" aria-hidden="true" />
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-1.5">
-                            <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: `${Math.min(((user.pointsBalance || 0) / 5000) * 100, 100)}%` }}></div>
+                        <div className="ml-3">
+                            <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                                <span className="font-bold">Application Pending:</span> Waiting for acceptance from <span className="font-bold">{displaySponsorName}</span>. 
+                            </p>
                         </div>
                     </div>
-                  )}
                 </div>
-                <div className="ml-5">
-                    {isPending ? (
-                        <button disabled className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-100 cursor-not-allowed">
-                            Redeem Points
-                        </button>
-                    ) : (
-                        <Link to="/catalog" className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
-                            Redeem Points
-                        </Link>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-2xl col-span-1 lg:col-span-2 border border-gray-100 dark:border-slate-700">
+                    <div className="p-6">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                            <div className="flex-shrink-0 bg-green-50 dark:bg-green-900/20 p-3 rounded-2xl">
+                                <ShieldCheck className="h-10 w-10 text-green-600 dark:text-green-400" aria-hidden="true" />
+                            </div>
+                            <div className="ml-5">
+                                <dl>
+                                    <dt className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
+                                        Current Balance
+                                    </dt>
+                                    <dd>
+                                        <div className="text-4xl font-black text-gray-900 dark:text-white flex items-center">
+                                            {isPending ? 'N/A' : (
+                                                showAsDollars ? (
+                                                    <>
+                                                        <DollarSign className="w-7 h-7 text-green-600 dark:text-green-400 mr-1" />
+                                                        {getPointsValueUSD().replace('$', '')}
+                                                    </>
+                                                ) : (
+                                                    user.pointsBalance?.toLocaleString() + ' pts'
+                                                )
+                                            )}
+                                        </div>
+                                    </dd>
+                                    <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-1">
+                                        Sponsor: <span className="font-bold text-gray-700 dark:text-gray-200">{displaySponsorName}</span> {isPending ? '(Pending)' : ''}
+                                    </dt>
+                                </dl>
+                            </div>
+                        </div>
+                        
+                        <div className="flex flex-col space-y-3 items-end">
+                            {!isPending && (
+                                <>
+                                    <button 
+                                        onClick={() => setShowAsDollars(!showAsDollars)}
+                                        className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-bold flex items-center bg-blue-50 dark:bg-blue-900/30 px-3 py-1.5 rounded-lg border border-blue-100 dark:border-blue-800 transition-all hover:shadow-sm"
+                                    >
+                                        <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                                        {showAsDollars ? 'View Points' : 'View Dollars'}
+                                    </button>
+                                    <Link 
+                                        to="/catalog" 
+                                        className="inline-flex items-center px-6 py-2.5 border border-transparent text-sm font-black rounded-xl shadow-lg shadow-blue-100 dark:shadow-none text-white bg-blue-600 hover:bg-blue-700 transition-all active:scale-95"
+                                    >
+                                        Redeem Points
+                                    </Link>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                {!isPending && activeSponsor && (
+                    <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-2xl border border-gray-100 dark:border-slate-700 lg:col-span-2">
+                        <div className="px-6 py-5">
+                            <div className="flex items-center mb-4">
+                                <Info className="h-5 w-5 text-blue-500 mr-2" />
+                                <h3 className="text-lg leading-6 font-bold text-gray-900 dark:text-white">How to Earn Points</h3>
+                            </div>
+                            <div className="prose prose-sm text-gray-500 dark:text-gray-400">
+                                {activeSponsor.incentiveRules && activeSponsor.incentiveRules.length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {activeSponsor.incentiveRules.map((rule, idx) => (
+                                            <div key={idx} className="flex items-center p-3 bg-gray-50 dark:bg-slate-700/50 rounded-xl text-gray-700 dark:text-gray-200 font-medium border border-transparent hover:border-blue-100 dark:hover:border-blue-800 transition-colors">
+                                                <div className="h-2 w-2 bg-blue-50 rounded-full mr-3"></div>
+                                                {rule}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="italic">No specific rules listed by sponsor.</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <div className="bg-white dark:bg-slate-800 shadow overflow-hidden sm:rounded-2xl border border-gray-100 dark:border-slate-700">
+                <div className="px-6 py-5 flex flex-col sm:flex-row justify-between items-center bg-gray-50 dark:bg-slate-700/30 border-b border-gray-100 dark:border-slate-700">
+                    <div>
+                        <h3 className="text-lg leading-6 font-bold text-gray-900 dark:text-white flex items-center">
+                            <Receipt className="w-5 h-5 mr-2 text-gray-400" />
+                            Recent Activity
+                        </h3>
+                    </div>
+                    {!isPending && (
+                        <div className="mt-4 sm:mt-0 flex items-center space-x-2">
+                            <button
+                                onClick={downloadHistoryCSV}
+                                className="flex items-center px-3 py-1.5 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 shadow-sm transition-colors mr-2"
+                                title="Download CSV"
+                            >
+                                <Download className="w-3.5 h-3.5 mr-1.5" />
+                                Export
+                            </button>
+                            <div className="flex items-center space-x-2">
+                                <Filter className="w-4 h-4 text-gray-400" />
+                                <select 
+                                    value={historyFilter} 
+                                    onChange={(e) => setHistoryFilter(e.target.value as any)}
+                                    className="text-xs font-bold border-gray-300 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white py-1 px-2"
+                                >
+                                    <option value="ALL">All Activity</option>
+                                    <option value="MANUAL">Awards Only</option>
+                                    <option value="PURCHASE">Redemptions</option>
+                                </select>
+                            </div>
+                        </div>
                     )}
                 </div>
-              </div>
+                <ul className="divide-y divide-gray-100 dark:divide-slate-700">
+                    {!isPending && filteredTransactions.map((t) => (
+                        <li key={t.id} className="px-6 py-4 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
+                            <div className="flex items-center justify-between">
+                                <div className="flex flex-col">
+                                    <div className="flex items-center">
+                                        <p className={`text-sm font-bold ${t.amount < 0 ? 'text-red-700 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
+                                            {t.reason}
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-col mt-1">
+                                        <span className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">{t.sponsorName}</span>
+                                        {t.actorName && (
+                                            <span className="text-[9px] text-gray-400/80 dark:text-gray-500/80 font-medium">By: {t.actorName}</span>
+                                        )}
+                                    </div>
+                                    <div className="mt-1">
+                                        {t.type && (
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter
+                                                ${t.type === 'MANUAL' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 
+                                                t.type === 'PURCHASE' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>
+                                                {t.type}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col items-end">
+                                    <div className={`flex items-center text-sm font-black ${t.amount > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                        {t.amount > 0 ? <TrendingUp className="w-4 h-4 mr-1"/> : <TrendingDown className="w-4 h-4 mr-1"/>}
+                                        {t.amount > 0 ? '+' : ''}{t.amount.toLocaleString()}
+                                    </div>
+                                    <div className="flex items-center text-[10px] text-gray-400 dark:text-gray-500 font-bold mt-1">
+                                        <Clock className="flex-shrink-0 mr-1 h-3 w-3" />
+                                        {t.date}
+                                    </div>
+                                </div>
+                            </div>
+                        </li>
+                    ))}
+                    {(filteredTransactions.length === 0 || isPending) && (
+                        <li className="px-4 py-12 text-sm text-gray-400 text-center italic">
+                            No transactions recorded yet.
+                        </li>
+                    )}
+                </ul>
             </div>
           </div>
+      )}
 
-          {/* Preferences Card */}
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                  <div className="flex items-center mb-4">
-                      <Bell className="h-5 w-5 text-gray-400 mr-2" />
-                      <h3 className="text-lg leading-6 font-medium text-gray-900">Preferences</h3>
-                  </div>
-                  <div className="flex items-center justify-between">
-                      <span className="flex-grow flex flex-col">
-                          <span className="text-sm font-medium text-gray-900">Point Change Alerts</span>
-                          <span className="text-sm text-gray-500">Receive notifications when your points balance changes.</span>
-                      </span>
-                      <button
-                          type="button"
-                          onClick={toggleAlerts}
-                          className={`${alertsEnabled ? 'bg-blue-600' : 'bg-gray-200'} relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
-                          role="switch"
-                          aria-checked={alertsEnabled}
-                      >
-                          <span aria-hidden="true" className={`${alertsEnabled ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200`} />
-                      </button>
-                  </div>
-              </div>
-          </div>
-
-          {/* Incentive Rules Card */}
-          {!isPending && activeSponsor && (
-              <div className="bg-white overflow-hidden shadow rounded-lg">
-                  <div className="px-4 py-5 sm:p-6">
-                      <div className="flex items-center mb-4">
-                          <Info className="h-5 w-5 text-gray-400 mr-2" />
-                          <h3 className="text-lg leading-6 font-medium text-gray-900">How to Earn Points</h3>
+      {activeTab === 'notifications' && (activeSponsor || isPending) && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {/* Preferences inside Notifications Tab */}
+              <div className="bg-white dark:bg-slate-800 shadow rounded-2xl overflow-hidden border border-blue-100 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
+                  <div className="px-6 py-4 flex items-center justify-between">
+                      <div className="flex items-center">
+                          <Settings className="h-5 w-5 text-blue-500 mr-2" />
+                          <div>
+                              <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest">Notification Preferences</h3>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">Manage how you receive alerts about your points.</p>
+                          </div>
                       </div>
-                      <div className="prose prose-sm text-gray-500">
-                          {activeSponsor.incentiveRules && activeSponsor.incentiveRules.length > 0 ? (
-                              <ul className="list-disc pl-5 space-y-1">
-                                  {activeSponsor.incentiveRules.map((rule, idx) => (
-                                      <li key={idx}>{rule}</li>
-                                  ))}
-                              </ul>
-                          ) : (
-                              <p>No specific rules listed by sponsor.</p>
-                          )}
+                      <div className="flex items-center space-x-3">
+                          <span className={`text-xs font-bold uppercase tracking-tighter ${alertsEnabled ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`}>
+                              Point Change Alerts {alertsEnabled ? 'ON' : 'OFF'}
+                          </span>
+                          <button
+                              type="button"
+                              onClick={toggleAlerts}
+                              className={`${alertsEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'} relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
+                              role="switch"
+                              aria-checked={alertsEnabled}
+                          >
+                              <span aria-hidden="true" className={`${alertsEnabled ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200`} />
+                          </button>
                       </div>
                   </div>
               </div>
-          )}
-      </div>
 
-      {/* History */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-5 sm:px-6 flex flex-col sm:flex-row justify-between items-center">
-          <div>
-              <h3 className="text-lg leading-6 font-medium text-gray-900">Recent Point Activity</h3>
-              <p className="mt-1 max-w-2xl text-sm text-gray-500">Your latest earnings and deductions.</p>
+              <div className="bg-white dark:bg-slate-800 shadow rounded-2xl overflow-hidden border border-gray-100 dark:border-slate-700">
+                  <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-700/30 flex items-center justify-between">
+                      <div className="flex items-center text-gray-700 dark:text-gray-300 font-bold uppercase tracking-widest text-xs">
+                          <Inbox className="w-4 h-4 mr-2 text-blue-500" />
+                          Message Inbox
+                      </div>
+                      <span className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase">{notifications.length} Total</span>
+                  </div>
+                  
+                  <div className="divide-y divide-gray-100 dark:divide-slate-700">
+                      {notifications.map((n) => (
+                          <div 
+                            key={n.id} 
+                            onClick={() => !n.isRead && handleReadNotification(n.id)}
+                            className={`p-6 transition-colors cursor-pointer group hover:bg-gray-50 dark:hover:bg-slate-700/50 ${n.isRead ? 'opacity-80' : 'bg-white dark:bg-slate-800 border-l-4 border-blue-500 shadow-sm'}`}
+                          >
+                              <div className="flex justify-between items-start mb-2">
+                                  <div className="flex items-center">
+                                      {n.type === 'ORDER_CONFIRMATION' ? (
+                                          <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded-lg mr-3">
+                                              <Receipt className="w-4 h-4 text-green-600 dark:text-green-400" />
+                                          </div>
+                                      ) : n.type === 'POINT_CHANGE' ? (
+                                          <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg mr-3">
+                                              <TrendingUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                          </div>
+                                      ) : (
+                                          <div className="bg-gray-100 dark:bg-gray-700 p-2 rounded-lg mr-3">
+                                              <Bell className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+                                          </div>
+                                      )}
+                                      <div>
+                                          <h4 className={`text-sm font-bold ${n.isRead ? 'text-gray-700 dark:text-gray-400' : 'text-gray-900 dark:text-white'}`}>{n.title}</h4>
+                                          <div className="flex items-center text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider mt-0.5">
+                                              <Calendar className="w-3 h-3 mr-1" />
+                                              {new Date(n.date).toLocaleString()}
+                                          </div>
+                                      </div>
+                                  </div>
+                                  {!n.isRead && (
+                                      <span className="h-2 w-2 rounded-full bg-blue-600 shadow-sm shadow-blue-200"></span>
+                                  )}
+                              </div>
+                              <p className="text-sm text-gray-600 dark:text-gray-300 ml-12">{n.message}</p>
+                              
+                              {n.type === 'POINT_CHANGE' && n.metadata?.amount < 0 && (
+                                  <div className="ml-12 mt-3 bg-red-50 dark:bg-red-900/10 border-l-4 border-red-500 p-3 rounded-r-lg">
+                                      <h5 className="text-xs font-bold text-red-800 dark:text-red-300 uppercase tracking-widest mb-1">
+                                          Explanation
+                                      </h5>
+                                      <p className="text-sm text-red-700 dark:text-red-200 font-medium">
+                                          {n.metadata.reason}
+                                      </p>
+                                      {n.metadata.actorName && (
+                                           <p className="text-[10px] text-red-500 dark:text-red-400 mt-1">
+                                              Authorized by: {n.metadata.actorName}
+                                           </p>
+                                      )}
+                                  </div>
+                              )}
+
+                              {n.type === 'ORDER_CONFIRMATION' && n.metadata?.orderSummary && (
+                                  <div className="ml-12 mt-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl border border-gray-100 dark:border-slate-600 p-4">
+                                      <div className="flex items-center mb-3 text-xs font-bold text-gray-400 uppercase tracking-widest">
+                                          <Package className="w-3 h-3 mr-1.5" />
+                                          Order Snapshot
+                                      </div>
+                                      <div className="space-y-2">
+                                          {n.metadata.orderSummary.items.map((item: CartItem, i: number) => (
+                                              <div key={i} className="flex justify-between text-xs">
+                                                  <span className="text-gray-600 dark:text-gray-300">
+                                                      <span className="font-bold text-gray-900 dark:text-white">{item.quantity}x</span> {item.name}
+                                                  </span>
+                                                  <span className="font-mono text-gray-400">{(item.pricePoints * item.quantity).toLocaleString()} pts</span>
+                                              </div>
+                                          ))}
+                                          <div className="pt-2 border-t border-gray-200 dark:border-slate-600 flex justify-between items-center">
+                                              <span className="text-xs font-bold text-gray-900 dark:text-white">Total Points Spent</span>
+                                              <span className="text-sm font-black text-green-600 dark:text-green-400">{n.metadata.orderSummary.total.toLocaleString()} PTS</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                              )}
+                          </div>
+                      ))}
+                      {notifications.length === 0 && (
+                          <div className="p-20 text-center text-gray-400 dark:text-gray-500">
+                              <Inbox className="w-16 h-16 mx-auto mb-4 opacity-10" />
+                              <p className="text-lg font-black uppercase tracking-widest">All caught up!</p>
+                              <p className="text-sm">You have no notifications at this time.</p>
+                          </div>
+                      )}
+                  </div>
+              </div>
           </div>
-          
-          {/* History Filter */}
-          {!isPending && (
-              <div className="mt-4 sm:mt-0 flex items-center space-x-2">
-                  <Filter className="w-4 h-4 text-gray-400" />
-                  <select 
-                      value={historyFilter} 
-                      onChange={(e) => setHistoryFilter(e.target.value as any)}
-                      className="text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
-                  >
-                      <option value="ALL">All Activity</option>
-                      <option value="MANUAL">Manual Awards</option>
-                      <option value="PURCHASE">Purchases</option>
-                  </select>
-              </div>
-          )}
-        </div>
-        <ul className="divide-y divide-gray-200">
-          {!isPending && filteredTransactions.map((t) => (
-            <li key={t.id} className="px-4 py-4 sm:px-6 hover:bg-gray-50">
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col">
-                    <p className="text-sm font-medium text-blue-600 truncate">{t.reason}</p>
-                    <div className="flex items-center space-x-2 mt-1">
-                        <span className="text-xs text-gray-500">{t.sponsorName}</span>
-                        {/* Type Badge */}
-                        {t.type && (
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium 
-                                ${t.type === 'MANUAL' ? 'bg-purple-100 text-purple-800' : 
-                                  t.type === 'PURCHASE' ? 'bg-gray-100 text-gray-800' : 'bg-green-100 text-green-800'}`}>
-                                {t.type}
-                            </span>
-                        )}
-                    </div>
-                </div>
-                <div className="flex flex-col items-end">
-                  <div className={`flex items-center text-sm font-bold ${t.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {t.amount > 0 ? <TrendingUp className="w-4 h-4 mr-1"/> : <TrendingDown className="w-4 h-4 mr-1"/>}
-                    {t.amount > 0 ? '+' : ''}{t.amount}
-                  </div>
-                  <div className="flex items-center text-xs text-gray-500 mt-1">
-                    <Clock className="flex-shrink-0 mr-1.5 h-3 w-3 text-gray-400" />
-                    {t.date}
-                  </div>
-                </div>
-              </div>
-            </li>
-          ))}
-          {(filteredTransactions.length === 0 || isPending) && (
-              <li className="px-4 py-4 text-sm text-gray-500 text-center italic">
-                  {isPending ? "Transaction history will be available after approval." : "No transactions found matching criteria."}
-              </li>
-          )}
-        </ul>
-      </div>
+      )}
     </div>
   );
 };
 
 const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
-    // Basic Sponsor Logic to handle Rules
+    // ... existing SponsorDashboard code ...
     const [sponsorOrg, setSponsorOrg] = useState<SponsorOrganization | undefined>(undefined);
     const [newRule, setNewRule] = useState('');
     const [loading, setLoading] = useState(true);
@@ -402,7 +579,6 @@ const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
     useEffect(() => {
         const load = async () => {
              const sp = await getSponsors();
-             // Assume user is linked to s1 for demo or find by ID in real app
              setSponsorOrg(sp.find(s => s.id === 's1')); 
              setLoading(false);
         };
@@ -427,43 +603,42 @@ const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
 
     return (
         <div className="space-y-6">
-             <div className="bg-white overflow-hidden shadow rounded-lg p-6">
-                 <h2 className="text-2xl font-bold text-gray-900 mb-4">Sponsor Overview: {user.fullName}</h2>
+             <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
+                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Sponsor Overview: {user.fullName}</h2>
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                     <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                         <h3 className="text-blue-800 font-semibold">Active Drivers</h3>
-                         <p className="text-3xl font-bold text-blue-900 mt-2">124</p>
+                     <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900">
+                         <h3 className="text-blue-800 dark:text-blue-300 font-semibold">Active Drivers</h3>
+                         <p className="text-3xl font-bold text-blue-900 dark:text-blue-100 mt-2">124</p>
                      </div>
-                     <div className="bg-green-50 p-4 rounded-lg border border-green-100">
-                         <h3 className="text-green-800 font-semibold">Pending Applications</h3>
-                         <p className="text-3xl font-bold text-green-900 mt-2">3</p>
+                     <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-100 dark:border-green-900">
+                         <h3 className="text-green-800 dark:text-green-300 font-semibold">Pending Applications</h3>
+                         <p className="text-3xl font-bold text-green-900 dark:text-green-100 mt-2">3</p>
                      </div>
-                     <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
-                         <h3 className="text-purple-800 font-semibold">Points Awarded (Month)</h3>
-                         <p className="text-3xl font-bold text-purple-900 mt-2">45,000</p>
+                     <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg border border-purple-100 dark:border-purple-900">
+                         <h3 className="text-purple-800 dark:text-purple-300 font-semibold">Points Awarded (Month)</h3>
+                         <p className="text-3xl font-bold text-purple-900 dark:text-purple-100 mt-2">45,000</p>
                      </div>
                  </div>
              </div>
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div className="bg-white shadow rounded-lg p-6">
-                     <h3 className="text-lg font-medium mb-4">Quick Actions</h3>
+                 <div className="bg-white dark:bg-slate-800 shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
+                     <h3 className="text-lg font-medium mb-4 text-gray-900 dark:text-white">Quick Actions</h3>
                      <div className="flex flex-col space-y-3">
                          <Link to="/sponsor/applications" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center flex justify-center items-center">
                             Review Applications
                          </Link>
-                         <Link to="/sponsor/points" className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-50 text-center flex justify-center items-center">
+                         <Link to="/sponsor/points" className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-white px-4 py-2 rounded hover:bg-gray-50 dark:hover:bg-slate-600 text-center flex justify-center items-center">
                             Manage Driver Points
                          </Link>
-                         <Link to="/sponsor/catalog" className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-50 text-center flex justify-center items-center">
+                         <Link to="/sponsor/catalog" className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-white px-4 py-2 rounded hover:bg-gray-50 dark:hover:bg-slate-600 text-center flex justify-center items-center">
                             Edit Product Catalog
                          </Link>
                      </div>
                  </div>
                  
-                 {/* Rule Management */}
-                 <div className="bg-white shadow rounded-lg p-6">
-                     <h3 className="text-lg font-medium mb-4">Incentive Rules</h3>
+                 <div className="bg-white dark:bg-slate-800 shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
+                     <h3 className="text-lg font-medium mb-4 text-gray-900 dark:text-white">Incentive Rules</h3>
                      <div className="space-y-4">
                          <div className="flex space-x-2">
                              <input 
@@ -471,13 +646,13 @@ const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
                                 value={newRule} 
                                 onChange={e => setNewRule(e.target.value)}
                                 placeholder="e.g. 50 pts for safe trip"
-                                className="flex-1 border rounded px-3 py-2 text-sm"
+                                className="flex-1 border border-gray-300 dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 dark:text-white"
                              />
                              <button onClick={handleAddRule} className="bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700">Add</button>
                          </div>
                          <ul className="space-y-2 max-h-48 overflow-y-auto">
                              {sponsorOrg?.incentiveRules?.map((rule, i) => (
-                                 <li key={i} className="flex justify-between items-center bg-gray-50 p-2 rounded text-sm">
+                                 <li key={i} className="flex justify-between items-center bg-gray-50 dark:bg-slate-700 p-2 rounded text-sm text-gray-800 dark:text-gray-200">
                                      <span>{rule}</span>
                                      <button onClick={() => handleRemoveRule(i)} className="text-red-500 hover:text-red-700 ml-2">
                                          <X className="w-4 h-4" />
@@ -496,6 +671,7 @@ const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
 };
 
 const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
+    // ... existing AdminDashboard code ...
     const [config, setConfig] = useState(getConfig());
     const [archiving, setArchiving] = useState(false);
 
@@ -522,181 +698,67 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
     };
 
     const handleArchive = async () => {
-        if (!confirm("Are you sure? This triggers the ETL pipeline.")) return;
         setArchiving(true);
         const success = await triggerRedshiftArchive();
-        if(success) alert("Archive job started successfully.");
-        else alert("Failed to trigger archive job.");
+        if(success) alert("Redshift Archive Triggered Successfully");
+        else alert("Failed to trigger Redshift Archive");
         setArchiving(false);
     };
 
-    const StatusBadge = ({ active, mockName, realName }: { active: boolean, mockName: string, realName: string }) => (
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${active ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
-            {active ? <AlertCircle className="w-3 h-3 mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
-            {active ? `MOCK (${mockName})` : `LIVE (${realName})`}
-        </span>
-    );
-
     return (
         <div className="space-y-6">
-             <div className="bg-slate-800 text-white overflow-hidden shadow rounded-lg p-6 flex justify-between items-center">
-                 <div>
-                    <h2 className="text-2xl font-bold mb-2">System Administration</h2>
-                    <p className="text-slate-300">Logged in as {user.username}</p>
-                 </div>
-                 
-                 <div className="flex flex-col items-end">
-                     <div className="flex items-center space-x-2">
-                        <div className={`h-3 w-3 rounded-full ${isTestMode() ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`} />
-                        <span className="font-bold text-sm tracking-wider">{isTestMode() ? 'TEST MODE' : 'PRODUCTION'}</span>
-                     </div>
-                 </div>
-             </div>
+            <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">System Administration</h2>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                     <Link to="/admin/sponsors" className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-xl border border-blue-100 dark:border-blue-800 hover:shadow-md transition-shadow">
+                        <Building className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-3" />
+                        <h3 className="font-bold text-gray-900 dark:text-white">Manage Sponsors</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Create and edit sponsor organizations.</p>
+                     </Link>
 
-             {/* Service Control Panel */}
-             <div className="bg-white shadow rounded-lg p-6 border-t-4 border-indigo-500">
-                 <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
-                     <Server className="w-5 h-5 mr-2 text-indigo-500" />
-                     Service Control Panel
-                 </h3>
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                     
-                     <div className={`border rounded-lg p-4 ${isMasterTestMode ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
-                         <div className="flex justify-between items-center mb-2">
-                             <h4 className="font-semibold text-gray-700">Test Mode</h4>
-                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isMasterTestMode ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
-                                {isMasterTestMode ? 'ACTIVE' : 'INACTIVE'}
-                             </span>
-                         </div>
-                         <p className="text-xs text-gray-500 mb-4">Master switch to toggle all services between Live and Mock.</p>
-                         <button 
-                            onClick={toggleMaster}
-                            className={`w-full py-2 px-4 rounded text-sm font-medium transition-colors ${isMasterTestMode ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-green-600 text-white hover:bg-green-700'}`}
-                         >
-                             <div className="flex items-center justify-center">
-                                <Power className="w-4 h-4 mr-2" />
-                                {isMasterTestMode ? 'Switch All to LIVE' : 'Switch All to MOCK'}
-                             </div>
-                         </button>
-                     </div>
+                     <Link to="/admin/users" className="bg-purple-50 dark:bg-purple-900/20 p-6 rounded-xl border border-purple-100 dark:border-purple-800 hover:shadow-md transition-shadow">
+                        <UserIcon className="w-8 h-8 text-purple-600 dark:text-purple-400 mb-3" />
+                        <h3 className="font-bold text-gray-900 dark:text-white">User Management</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">View users, reset passwords, manage roles.</p>
+                     </Link>
 
-                     <div className="border rounded-lg p-4 bg-gray-50">
-                         <div className="flex justify-between items-center mb-2">
-                             <h4 className="font-semibold text-gray-700">Authentication</h4>
-                             <StatusBadge active={config.useMockAuth} mockName="Local" realName="Firebase" />
-                         </div>
-                         <p className="text-xs text-gray-500 mb-4">Toggle between simulated auth and Google Firebase.</p>
-                         <button 
-                            onClick={() => toggleService('useMockAuth')}
-                            className={`w-full py-2 px-4 rounded text-sm font-medium transition-colors ${config.useMockAuth ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'}`}
-                         >
-                             {config.useMockAuth ? 'Enable Live Firebase' : 'Switch to Mock Auth'}
-                         </button>
-                     </div>
+                     <Link to="/admin/settings" className="bg-orange-50 dark:bg-orange-900/20 p-6 rounded-xl border border-orange-100 dark:border-orange-800 hover:shadow-md transition-shadow">
+                        <Globe className="w-8 h-8 text-orange-600 dark:text-orange-400 mb-3" />
+                        <h3 className="font-bold text-gray-900 dark:text-white">Global Settings</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">System-wide configuration and rules.</p>
+                     </Link>
 
-                     <div className="border rounded-lg p-4 bg-gray-50">
-                         <div className="flex justify-between items-center mb-2">
-                             <h4 className="font-semibold text-gray-700">Database</h4>
-                             <StatusBadge active={config.useMockDB} mockName="LocalStorage" realName="AWS RDS" />
-                         </div>
-                         <p className="text-xs text-gray-500 mb-4">Toggle between local browser storage and AWS MySQL.</p>
-                         <button 
-                            onClick={() => toggleService('useMockDB')}
-                            className={`w-full py-2 px-4 rounded text-sm font-medium transition-colors ${config.useMockDB ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'}`}
-                         >
-                             {config.useMockDB ? 'Enable Live MySQL' : 'Switch to Mock DB'}
-                         </button>
+                     <div className="bg-gray-50 dark:bg-slate-700/50 p-6 rounded-xl border border-gray-200 dark:border-slate-600">
+                        <Server className="w-8 h-8 text-gray-600 dark:text-gray-400 mb-3" />
+                        <h3 className="font-bold text-gray-900 dark:text-white">System Status</h3>
+                        <p className="text-sm text-green-600 dark:text-green-400 mt-1 font-bold flex items-center"><CheckCircle className="w-3 h-3 mr-1"/> Operational</p>
                      </div>
+                </div>
 
-                     <div className="border rounded-lg p-4 bg-gray-50">
-                         <div className="flex justify-between items-center mb-2">
-                             <h4 className="font-semibold text-gray-700">Warehouse</h4>
-                             <StatusBadge active={config.useMockRedshift} mockName="No-Op" realName="Redshift" />
-                         </div>
-                         <p className="text-xs text-gray-500 mb-4">Toggle between simulated ETL latency and real AWS Glue triggers.</p>
-                         <button 
-                            onClick={() => toggleService('useMockRedshift')}
-                            className={`w-full py-2 px-4 rounded text-sm font-medium transition-colors ${config.useMockRedshift ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'}`}
-                         >
-                             {config.useMockRedshift ? 'Enable Live Redshift' : 'Switch to Mock ETL'}
-                         </button>
-                     </div>
-                 </div>
-             </div>
-
-             <div className="bg-indigo-900 rounded-lg p-4 text-white flex items-center justify-between shadow-lg">
-                <div className="flex items-center">
-                    <Database className="w-8 h-8 mr-4 text-indigo-300" />
-                    <div>
-                        <h3 className="font-bold text-lg">Data Warehousing</h3>
-                        <p className="text-indigo-200 text-sm">Manually trigger archival pipeline.</p>
+                <div className="border-t border-gray-100 dark:border-slate-700 pt-6">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+                        <Database className="w-5 h-5 mr-2" /> Data Operations
+                    </h3>
+                    <div className="flex flex-wrap gap-4">
+                        <button 
+                            onClick={handleArchive}
+                            disabled={archiving}
+                            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                        >
+                            {archiving ? <Loader className="w-4 h-4 mr-2 animate-spin"/> : <Database className="w-4 h-4 mr-2"/>}
+                            Trigger Redshift Archive
+                        </button>
                     </div>
                 </div>
-                <button 
-                    onClick={handleArchive}
-                    disabled={archiving}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-md font-medium flex items-center transition-colors disabled:opacity-50"
-                >
-                    {archiving ? <Loader className="w-4 h-4 mr-2 animate-spin" /> : <Server className="w-4 h-4 mr-2" />}
-                    {archiving ? 'Archiving...' : 'Archive to Redshift'}
-                </button>
-             </div>
-
-             {/* Quick Stats & Alerts */}
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                 <div className="bg-white p-6 rounded-lg shadow border-l-4 border-blue-500">
-                     <div className="text-gray-500 text-sm font-medium">Total Sponsors</div>
-                     <div className="text-2xl font-bold text-gray-900 mt-1">15</div>
-                 </div>
-                 <div className="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
-                     <div className="text-gray-500 text-sm font-medium">Total Drivers</div>
-                     <div className="text-2xl font-bold text-gray-900 mt-1">1,204</div>
-                 </div>
-                 <div className="bg-white p-6 rounded-lg shadow border-l-4 border-amber-500">
-                     <div className="text-gray-500 text-sm font-medium">Total Sales (YTD)</div>
-                     <div className="text-2xl font-bold text-gray-900 mt-1">$450k</div>
-                 </div>
-                 <div className="bg-white p-6 rounded-lg shadow border-l-4 border-red-500">
-                     <div className="text-gray-500 text-sm font-medium">System Alerts</div>
-                     <div className="text-2xl font-bold text-gray-900 mt-1">2</div>
-                 </div>
-             </div>
-
-             <div className="bg-white shadow rounded-lg">
-                 <div className="px-6 py-4 border-b border-gray-200">
-                     <h3 className="font-bold text-gray-800 flex items-center">
-                         <AlertCircle className="w-5 h-5 mr-2 text-red-500" />
-                         Critical Actions
-                     </h3>
-                 </div>
-                 <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                     <Link to="/admin/sponsors" className="text-left p-4 border rounded hover:bg-gray-50 block">
-                         <div className="font-semibold text-gray-900">Create New Sponsor</div>
-                         <div className="text-sm text-gray-500">Onboard a new organization to the platform.</div>
-                     </Link>
-                     <Link to="/admin/users" className="text-left p-4 border rounded hover:bg-gray-50 block">
-                         <div className="font-semibold text-gray-900">Manage Users</div>
-                         <div className="text-sm text-gray-500">Manually create or manage accounts.</div>
-                     </Link>
-                     <Link to="/reports?tab=audit" className="text-left p-4 border rounded hover:bg-gray-50 block">
-                         <div className="font-semibold text-gray-900">System Logs</div>
-                         <div className="text-sm text-gray-500">View detailed audit logs for security.</div>
-                     </Link>
-                 </div>
-             </div>
+            </div>
         </div>
     );
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
-    switch (user.role) {
-        case UserRole.DRIVER:
-            return <DriverDashboard user={user} />;
-        case UserRole.SPONSOR:
-            return <SponsorDashboard user={user} />;
-        case UserRole.ADMIN:
-            return <AdminDashboard user={user} />;
-        default:
-            return <div className="p-10 text-center text-red-600">Error: Unknown User Role ({user.role})</div>;
-    }
+  if (user.role === UserRole.DRIVER) return <DriverDashboard user={user} />;
+  if (user.role === UserRole.SPONSOR) return <SponsorDashboard user={user} />;
+  if (user.role === UserRole.ADMIN) return <AdminDashboard user={user} />;
+  return <div>Unknown User Role</div>;
 };

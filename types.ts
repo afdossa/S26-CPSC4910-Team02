@@ -1,3 +1,4 @@
+
 export enum UserRole {
   DRIVER = 'DRIVER',
   SPONSOR = 'SPONSOR',
@@ -13,11 +14,32 @@ export interface User {
   phoneNumber?: string;
   address?: string;
   avatarUrl?: string;
+  bio?: string; // Personal description for profile
   sponsorId?: string; // Links driver to a sponsor
   pointsBalance?: number; // Only for drivers
+  isActive?: boolean; // Track if account is banned/active
   preferences?: {
     alertsEnabled: boolean;
   };
+}
+
+export interface GlobalSettings {
+  minRedemptionPoints: number;
+  isRegistrationEnabled: boolean;
+  maintenanceMode: boolean;
+  systemContactEmail: string;
+  allowDriverPasswordResets: boolean;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  date: string;
+  isRead: boolean;
+  type: 'ORDER_CONFIRMATION' | 'POINT_CHANGE' | 'SYSTEM';
+  metadata?: any; // For storing order details or specific point info
 }
 
 export interface PendingUser {
@@ -46,6 +68,10 @@ export interface Product {
   createdAt?: string; // ISO Date string
 }
 
+export interface CartItem extends Product {
+  quantity: number;
+}
+
 export interface AuditLog {
   id: string;
   date: string;
@@ -62,6 +88,8 @@ export interface PointTransaction {
   amount: number;
   reason: string;
   sponsorName: string;
+  driverName?: string; // Added to track who received the points
+  actorName?: string; // The specific user who performed the action (e.g. Sponsor Name)
   type?: 'MANUAL' | 'AUTOMATED' | 'PURCHASE'; 
 }
 

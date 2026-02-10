@@ -1,3 +1,4 @@
+
 // Granular Service Configuration
 // Persisted in LocalStorage so settings survive refreshes
 
@@ -9,11 +10,11 @@ export interface ServiceConfig {
 
 const CONFIG_KEY = 'gdip_service_config_v1';
 
-// CHANGED: Default is now Production (False) as requested
+// Default is Test Mode (True) for the initial offering demo
 const DEFAULT_CONFIG: ServiceConfig = {
-    useMockAuth: false,
-    useMockDB: false,
-    useMockRedshift: false
+    useMockAuth: true,
+    useMockDB: true,
+    useMockRedshift: true
 };
 
 // Load config or default
@@ -32,24 +33,24 @@ export const getConfig = (): ServiceConfig => {
     return currentConfig;
 };
 
-export const updateConfig = (newConfig: Partial<ServiceConfig>, forceReload = false) => {
+export const updateConfig = (newConfig: Partial<ServiceConfig>) => {
+    // 1. Update internal state immediately
     currentConfig = { ...currentConfig, ...newConfig };
+    
+    // 2. Persist to storage
     localStorage.setItem(CONFIG_KEY, JSON.stringify(currentConfig));
     
-    // Dispatch event for UI updates
-    window.dispatchEvent(new Event('config-change'));
-    
-    // Only reload if explicitly forced (avoiding this prevents 404s in some SPA environments)
-    if (forceReload) {
-        window.location.reload();
-    }
+    // 3. Dispatch event for UI updates asynchronously
+    // We removed window.location.reload() to avoid security errors in blob-origin environments.
+    setTimeout(() => {
+        window.dispatchEvent(new Event('config-change'));
+    }, 50);
 };
 
-export const resetToDefaults = (forceReload = true) => {
+export const resetToDefaults = () => {
     localStorage.removeItem(CONFIG_KEY);
     currentConfig = DEFAULT_CONFIG;
     window.dispatchEvent(new Event('config-change'));
-    if(forceReload) window.location.reload();
 };
 
 export const forceTestMode = () => {
@@ -57,11 +58,10 @@ export const forceTestMode = () => {
         useMockAuth: true,
         useMockDB: true,
         useMockRedshift: true
-    }, false);
+    });
 };
 
 // Helper for the "Test Mode" visual indicator (Red Border)
-// We consider it "Test Mode" if ANY service is being mocked.
 export const isTestMode = () => {
     return currentConfig.useMockAuth || currentConfig.useMockDB || currentConfig.useMockRedshift;
 };

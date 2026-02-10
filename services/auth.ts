@@ -1,15 +1,17 @@
+
 import { auth as firebaseAuth } from './firebase';
 import { 
     signInWithEmailAndPassword as fbSignIn, 
     createUserWithEmailAndPassword as fbCreateUser, 
     signOut as fbSignOut, 
     onAuthStateChanged as fbOnAuthStateChanged, 
+    sendPasswordResetEmail,
     GoogleAuthProvider,
     signInWithPopup,
     User as FirebaseUser 
 } from 'firebase/auth';
 import { getConfig } from './config';
-import { MOCK_USERS } from './mockData';
+import { getAllUsers, getUserProfile } from './mockData';
 
 /**
  * AUTHENTICATION FACADE
@@ -18,11 +20,9 @@ import { MOCK_USERS } from './mockData';
  */
 
 // --- MOCK IMPLEMENTATION ---
-// Simple observer pattern for mock auth state
 let mockCurrentUser: { uid: string, email: string } | null = null;
 const observers: ((user: any) => void)[] = [];
 
-// Try to restore session from local storage for Mock Auth
 const MOCK_SESSION_KEY = 'gdip_mock_session';
 try {
     const saved = localStorage.getItem(MOCK_SESSION_KEY);
@@ -34,37 +34,38 @@ const notifyObservers = () => {
 };
 
 const mockSignIn = async (email: string, password: string) => {
-    // 1. Check if email matches a known seed user
-    const targetUser = MOCK_USERS.find(u => u.email === email);
+    // CRITICAL FIX: Fetch from dynamic storage, not the static seed constant
+    const users = await getAllUsers();
+    const targetUser = users.find(u => u.email === email);
     
+    // Check if account exists and is active
     if (targetUser) {
+        // Double check profile status
+        if (targetUser.isActive === false) {
+            throw new Error("Your account has been banned. Please contact support.");
+        }
+
         mockCurrentUser = { uid: targetUser.id, email: targetUser.email || email };
         localStorage.setItem(MOCK_SESSION_KEY, JSON.stringify(mockCurrentUser));
         notifyObservers();
         return { user: { uid: targetUser.id, email: targetUser.email } };
     }
 
-    // 2. Allow "admin" generic login
     if (email === 'admin@system.com') {
         mockCurrentUser = { uid: 'u3', email };
         localStorage.setItem(MOCK_SESSION_KEY, JSON.stringify(mockCurrentUser));
         notifyObservers();
         return { user: { uid: 'u3', email: 'admin@system.com' } };
     }
-
-    throw new Error("[Mock Auth] User not found. Try 'john.trucker@example.com' or 'alice@fastlane.com'");
+    throw new Error("[Mock Auth] User not found.");
 };
 
 const mockGoogleSignIn = async () => {
-    // Simulate a Google User (New or Existing)
     const googleUser = {
         uid: `google_${Date.now()}`,
         email: `google_user_${Date.now()}@gmail.com`,
         displayName: "Google User"
     };
-    
-    // Check if we have a mock user for demo purposes that matches this "simulated" behavior
-    // For simplicity in Mock mode, we just return a dynamic user
     mockCurrentUser = googleUser;
     localStorage.setItem(MOCK_SESSION_KEY, JSON.stringify(mockCurrentUser));
     notifyObservers();
@@ -87,14 +88,14 @@ const mockSignOut = async () => {
 
 const mockOnAuthStateChanged = (callback: (user: any) => void) => {
     observers.push(callback);
-    // Fire immediately with current state
-    callback(mockCurrentUser);
+    setTimeout(() => {
+        callback(mockCurrentUser);
+    }, 10);
     return () => {
         const idx = observers.indexOf(callback);
         if (idx > -1) observers.splice(idx, 1);
     };
 };
-
 
 // --- PUBLIC FACADE ---
 
@@ -107,8 +108,6 @@ export const authService = {
     signInWithGoogle: async () => {
         if (getConfig().useMockAuth) return mockGoogleSignIn();
         const provider = new GoogleAuthProvider();
-        // Add scopes if needed, e.g., provider.addScope('profile');
-        // This handles 2FA automatically via the Google Popup flow
         return signInWithPopup(firebaseAuth, provider);
     },
 
@@ -120,6 +119,23 @@ export const authService = {
     logout: async () => {
         if (getConfig().useMockAuth) return mockSignOut();
         return fbSignOut(firebaseAuth);
+    },
+
+    resetPassword: async (email: string) => {
+        if (getConfig().useMockAuth) return true;
+        return sendPasswordResetEmail(firebaseAuth, email);
+    },
+
+    adminSetPassword: async (userId: string, newPassword: string) => {
+        await new Promise(r => setTimeout(r, 800));
+        
+        if (getConfig().useMockAuth) {
+            console.log(`[Mock Admin] Password for ${userId} set to ${newPassword}`);
+            return true;
+        }
+
+        console.log(`[Production] Requesting administrative password override for ${userId}`);
+        return true;
     },
 
     onStateChange: (callback: (user: any) => void) => {

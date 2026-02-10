@@ -8,6 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
@@ -36,7 +37,7 @@
 }
 </script>
 </head>
-<body class="bg-gray-50 text-slate-900 font-sans antialiased h-screen flex flex-col">
+<body class="bg-gray-50 text-slate-900 font-sans antialiased h-screen flex flex-col dark:bg-slate-900 dark:text-slate-100 transition-colors duration-200">
 <div id="root" class="flex-grow flex flex-col"></div>
 
 <script type="module" src="/index.tsx"></script>

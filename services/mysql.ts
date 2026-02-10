@@ -1,4 +1,5 @@
-import { User, UserRole, DriverApplication, SponsorOrganization, Product, PointTransaction } from '../types';
+
+import { User, UserRole, DriverApplication, SponsorOrganization, Product, PointTransaction, Notification, CartItem } from '../types';
 import { AWS_API_CONFIG, getConfig } from './config';
 
 /**
@@ -20,6 +21,7 @@ interface ProdDB {
     applications: DriverApplication[];
     products: Product[];
     transactions: PointTransaction[];
+    notifications: Notification[];
 }
 
 const loadProdDB = (): ProdDB => {
@@ -48,9 +50,10 @@ const loadProdDB = (): ProdDB => {
         applications: [],
         products: [
             { id: 'p1', name: 'Wireless Headset', description: 'Noise cancelling headset.', pricePoints: 5000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=10', createdAt: '2025-01-01' },
-            { id: 'p2', name: 'Truck GPS', description: 'Advanced routing.', pricePoints: 15000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=11', createdAt: '2025-01-15' }
+            { id: 'p2', name: 'Truck GPS', description: 'Advanced routing system.', pricePoints: 15000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=11', createdAt: '2025-01-15' }
         ],
-        transactions: []
+        transactions: [],
+        notifications: []
     };
 };
 
@@ -73,7 +76,6 @@ export const triggerRedshiftArchive = async (): Promise<boolean> => {
 
     try {
         console.log("[AWS] Triggering Real AWS Glue ETL job...");
-        // In reality: await fetch(`${AWS_API_CONFIG.baseUrl}/system/archive`, { method: 'POST', headers });
         await new Promise(resolve => setTimeout(resolve, 2000)); 
         return true;
     } catch (e) {
@@ -84,9 +86,7 @@ export const triggerRedshiftArchive = async (): Promise<boolean> => {
 
 // --- USER MANAGEMENT ---
 export const apiGetUserProfile = async (uid: string): Promise<User | undefined> => {
-    // Simulate Network Latency
     await new Promise(r => setTimeout(r, 300));
-    
     const db = loadProdDB();
     return db.users.find(u => u.id === uid);
 };
@@ -100,10 +100,7 @@ export const apiGetAllUsers = async (): Promise<User[]> => {
 export const apiCreateProfile = async (user: User): Promise<boolean> => {
     await new Promise(r => setTimeout(r, 300));
     const db = loadProdDB();
-    
-    // Check if duplicate ID exists
     if (db.users.some(u => u.id === user.id)) return false; 
-    
     db.users.push(user);
     saveProdDB(db);
     return true;
@@ -121,11 +118,73 @@ export const apiUpdateUserRole = async (userId: string, newRole: UserRole): Prom
     return false;
 };
 
+export const apiBanUser = async (userId: string, active: boolean): Promise<boolean> => {
+    await new Promise(r => setTimeout(r, 200));
+    const db = loadProdDB();
+    const user = db.users.find(u => u.id === userId);
+    if (user) {
+        user.isActive = active;
+        saveProdDB(db);
+        return true;
+    }
+    return false;
+};
+
+export const apiDeleteUser = async (userId: string): Promise<boolean> => {
+    await new Promise(r => setTimeout(r, 200));
+    const db = loadProdDB();
+    const index = db.users.findIndex(u => u.id === userId);
+    if (index !== -1) {
+        db.users.splice(index, 1);
+        saveProdDB(db);
+        return true;
+    }
+    return false;
+};
+
 export const apiUpdateUserPreferences = async (userId: string, prefs: { alertsEnabled: boolean }) => {
     const db = loadProdDB();
     const user = db.users.find(u => u.id === userId);
     if (user) {
         user.preferences = { ...(user.preferences || { alertsEnabled: true }), ...prefs };
+        saveProdDB(db);
+        return true;
+    }
+    return false;
+};
+
+export const apiUpdateUserProfile = async (userId: string, updates: Partial<User>): Promise<boolean> => {
+    await new Promise(r => setTimeout(r, 300));
+    const db = loadProdDB();
+    const index = db.users.findIndex(u => u.id === userId);
+    if (index !== -1) {
+        db.users[index] = { ...db.users[index], ...updates };
+        saveProdDB(db);
+        return true;
+    }
+    return false;
+};
+
+// --- NOTIFICATIONS ---
+export const apiGetNotifications = async (userId: string): Promise<Notification[]> => {
+    await new Promise(r => setTimeout(r, 200));
+    const db = loadProdDB();
+    return (db.notifications || []).filter(n => n.userId === userId);
+};
+
+export const apiAddNotification = async (notif: Notification): Promise<boolean> => {
+    const db = loadProdDB();
+    if(!db.notifications) db.notifications = [];
+    db.notifications.push(notif);
+    saveProdDB(db);
+    return true;
+};
+
+export const apiMarkNotificationAsRead = async (id: string): Promise<boolean> => {
+    const db = loadProdDB();
+    const n = db.notifications?.find(x => x.id === id);
+    if (n) {
+        n.isRead = true;
         saveProdDB(db);
         return true;
     }
@@ -173,10 +232,27 @@ export const apiGetCatalog = async (): Promise<Product[]> => {
     return loadProdDB().products;
 };
 
+export const apiValidateCartAvailability = async (cart: CartItem[]): Promise<{ valid: boolean, unavailableItems: string[] }> => {
+    await new Promise(r => setTimeout(r, 200)); // Simulate latency
+    const db = loadProdDB();
+    const unavailable: string[] = [];
+
+    for (const item of cart) {
+        const product = db.products.find(p => p.id === item.id);
+        if (!product || !product.availability) {
+            unavailable.push(item.name);
+        }
+    }
+
+    return { 
+        valid: unavailable.length === 0, 
+        unavailableItems: unavailable 
+    };
+};
+
 // --- APPLICATIONS ---
 export const apiSubmitApplication = async (app: DriverApplication): Promise<boolean> => {
     const db = loadProdDB();
-    // Remove existing pending for this user
     db.applications = db.applications.filter(a => !(a.userId === app.userId && a.status === 'PENDING'));
     app.id = `app${Date.now()}`;
     db.applications.push(app);
@@ -207,15 +283,14 @@ export const apiProcessApplication = async (appId: string, status: string): Prom
 };
 
 // --- POINTS ---
-export const apiUpdateDriverPoints = async (userId: string, amount: number, reason: string, sponsorId: string, type: 'MANUAL' | 'AUTOMATED' | 'PURCHASE' = 'MANUAL'): Promise<{success: boolean, message: string}> => {
+export const apiUpdateDriverPoints = async (userId: string, amount: number, reason: string, sponsorId: string, type: 'MANUAL' | 'AUTOMATED' | 'PURCHASE' = 'MANUAL', actorName?: string): Promise<{success: boolean, message: string}> => {
     const db = loadProdDB();
     const user = db.users.find(u => u.id === userId);
     
     if (!user) return { success: false, message: "User not found" };
     
-    // Check Floor
+    const sponsor = db.sponsors.find(s => s.id === sponsorId);
     if (amount < 0) {
-        const sponsor = db.sponsors.find(s => s.id === sponsorId);
         const current = user.pointsBalance || 0;
         const floor = sponsor?.pointsFloor || 0;
         if (current + amount < floor) {
@@ -230,9 +305,25 @@ export const apiUpdateDriverPoints = async (userId: string, amount: number, reas
         date: new Date().toISOString().split('T')[0],
         amount,
         reason,
-        sponsorName: db.sponsors.find(s => s.id === sponsorId)?.name || 'Unknown',
+        sponsorName: sponsor?.name || 'Unknown',
+        actorName: actorName,
         type: type
     });
+
+    if (user.preferences?.alertsEnabled !== false) {
+        const notif: Notification = {
+            id: `pn${Date.now()}`,
+            userId,
+            title: amount > 0 ? 'Points Awarded' : 'Points Deducted',
+            message: `${Math.abs(amount).toLocaleString()} points have been ${amount > 0 ? 'added to' : 'removed from'} your account. Reason: ${reason}`,
+            date: new Date().toISOString(),
+            isRead: false,
+            type: 'POINT_CHANGE',
+            metadata: { amount, reason, sponsorName: sponsor?.name, actorName }
+        };
+        if(!db.notifications) db.notifications = [];
+        db.notifications.push(notif);
+    }
 
     saveProdDB(db);
     return { success: true, message: "Transaction committed" };
