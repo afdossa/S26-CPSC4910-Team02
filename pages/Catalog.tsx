@@ -97,10 +97,15 @@ export const Catalog: React.FC<CatalogProps> = ({
   const totalPoints = cart.reduce((acc, item) => acc + (item.pricePoints * item.quantity), 0);
   const ratio = activeSponsor?.pointDollarRatio || 0.01;
   const totalUSD = (totalPoints * ratio).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  
+  // Calculate potential balance
+  const currentBalance = user.pointsBalance || 0;
+  const remainingBalance = currentBalance - totalPoints;
+  const isAffordable = remainingBalance >= 0;
 
   const initiateCheckout = () => {
     if (cart.length === 0) return;
-    if ((user.pointsBalance || 0) < totalPoints) {
+    if (!isAffordable) {
       alert("Insufficient points for this purchase.");
       return;
     }
@@ -181,6 +186,22 @@ export const Catalog: React.FC<CatalogProps> = ({
             <p className="text-gray-500 dark:text-gray-400 text-center mb-6">
               You are about to spend <span className="font-bold text-gray-900 dark:text-white">{totalPoints.toLocaleString()} points</span> ({totalUSD}) for your selected rewards.
             </p>
+            
+            <div className="bg-gray-50 dark:bg-slate-700/50 rounded-xl p-4 mb-6">
+                <div className="flex justify-between text-sm mb-2">
+                    <span className="text-gray-500 dark:text-gray-400">Current Balance:</span>
+                    <span className="font-bold text-gray-900 dark:text-white">{currentBalance.toLocaleString()} pts</span>
+                </div>
+                <div className="flex justify-between text-sm mb-2">
+                    <span className="text-gray-500 dark:text-gray-400">Total Cost:</span>
+                    <span className="font-bold text-red-500">-{totalPoints.toLocaleString()} pts</span>
+                </div>
+                <div className="border-t border-gray-200 dark:border-slate-600 my-2 pt-2 flex justify-between text-base font-black">
+                    <span className="text-gray-900 dark:text-white">Remaining:</span>
+                    <span className="text-green-600 dark:text-green-400">{remainingBalance.toLocaleString()} pts</span>
+                </div>
+            </div>
+
             <div className="space-y-3">
               <button 
                 onClick={handleCheckout}
@@ -501,6 +522,18 @@ export const Catalog: React.FC<CatalogProps> = ({
 
           {cart.length > 0 && (
             <div className="border-t border-gray-100 dark:border-slate-700 p-6 space-y-4 bg-gray-50 dark:bg-slate-700/50">
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mb-2">
+                 <div className="flex justify-between text-xs text-blue-800 dark:text-blue-300 mb-1">
+                    <span>Current Balance</span>
+                    <span>{currentBalance.toLocaleString()} pts</span>
+                 </div>
+                 <div className="flex justify-between text-xs font-bold text-blue-900 dark:text-blue-100">
+                    <span>Estimated Remaining</span>
+                    <span className={remainingBalance < 0 ? "text-red-600 dark:text-red-400" : ""}>
+                        {remainingBalance.toLocaleString()} pts
+                    </span>
+                 </div>
+              </div>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400">
                   <span>Subtotal</span>
@@ -515,15 +548,15 @@ export const Catalog: React.FC<CatalogProps> = ({
               </div>
               <button
                 onClick={initiateCheckout}
-                disabled={isPurchasing || ((user.pointsBalance || 0) < totalPoints)}
+                disabled={isPurchasing || !isAffordable}
                 className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all flex items-center justify-center ${
-                  isPurchasing || ((user.pointsBalance || 0) < totalPoints)
+                  isPurchasing || !isAffordable
                   ? 'bg-gray-400 cursor-not-allowed' 
                   : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
                 }`}
               >
                 {isPurchasing ? <Loader className="w-5 h-5 animate-spin mr-2" /> : <CreditCard className="w-5 h-5 mr-2" />}
-                {((user.pointsBalance || 0) < totalPoints) ? 'Insufficient Points' : 'Place Order'}
+                {!isAffordable ? 'Insufficient Points' : 'Place Order'}
               </button>
             </div>
           )}
@@ -532,4 +565,3 @@ export const Catalog: React.FC<CatalogProps> = ({
     </div>
   );
 };
-        

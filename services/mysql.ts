@@ -1,5 +1,5 @@
 
-import { User, UserRole, DriverApplication, SponsorOrganization, Product, PointTransaction, Notification } from '../types';
+import { User, UserRole, DriverApplication, SponsorOrganization, Product, PointTransaction, Notification, CartItem } from '../types';
 import { AWS_API_CONFIG, getConfig } from './config';
 
 /**
@@ -232,6 +232,24 @@ export const apiGetCatalog = async (): Promise<Product[]> => {
     return loadProdDB().products;
 };
 
+export const apiValidateCartAvailability = async (cart: CartItem[]): Promise<{ valid: boolean, unavailableItems: string[] }> => {
+    await new Promise(r => setTimeout(r, 200)); // Simulate latency
+    const db = loadProdDB();
+    const unavailable: string[] = [];
+
+    for (const item of cart) {
+        const product = db.products.find(p => p.id === item.id);
+        if (!product || !product.availability) {
+            unavailable.push(item.name);
+        }
+    }
+
+    return { 
+        valid: unavailable.length === 0, 
+        unavailableItems: unavailable 
+    };
+};
+
 // --- APPLICATIONS ---
 export const apiSubmitApplication = async (app: DriverApplication): Promise<boolean> => {
     const db = loadProdDB();
@@ -265,7 +283,7 @@ export const apiProcessApplication = async (appId: string, status: string): Prom
 };
 
 // --- POINTS ---
-export const apiUpdateDriverPoints = async (userId: string, amount: number, reason: string, sponsorId: string, type: 'MANUAL' | 'AUTOMATED' | 'PURCHASE' = 'MANUAL'): Promise<{success: boolean, message: string}> => {
+export const apiUpdateDriverPoints = async (userId: string, amount: number, reason: string, sponsorId: string, type: 'MANUAL' | 'AUTOMATED' | 'PURCHASE' = 'MANUAL', actorName?: string): Promise<{success: boolean, message: string}> => {
     const db = loadProdDB();
     const user = db.users.find(u => u.id === userId);
     
@@ -288,6 +306,7 @@ export const apiUpdateDriverPoints = async (userId: string, amount: number, reas
         amount,
         reason,
         sponsorName: sponsor?.name || 'Unknown',
+        actorName: actorName,
         type: type
     });
 
@@ -300,7 +319,7 @@ export const apiUpdateDriverPoints = async (userId: string, amount: number, reas
             date: new Date().toISOString(),
             isRead: false,
             type: 'POINT_CHANGE',
-            metadata: { amount, reason, sponsorName: sponsor?.name }
+            metadata: { amount, reason, sponsorName: sponsor?.name, actorName }
         };
         if(!db.notifications) db.notifications = [];
         db.notifications.push(notif);

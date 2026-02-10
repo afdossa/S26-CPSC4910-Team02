@@ -89,6 +89,7 @@ export interface PointTransaction {
   reason: string;
   sponsorName: string;
   driverName?: string; // Added to track who received the points
+  actorName?: string; // The specific user who performed the action (e.g. Sponsor Name)
   type?: 'MANUAL' | 'AUTOMATED' | 'PURCHASE'; 
 }
 

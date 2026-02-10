@@ -1,5 +1,5 @@
 
-import { User, UserRole, Product, SponsorOrganization, AboutData, AuditLog, PointTransaction, DriverApplication, PendingUser, Notification, GlobalSettings } from '../types';
+import { User, UserRole, Product, SponsorOrganization, AboutData, AuditLog, PointTransaction, DriverApplication, PendingUser, Notification, GlobalSettings, CartItem } from '../types';
 import { getConfig, isTestMode } from './config';
 import * as MySQL from './mysql';
 
@@ -88,10 +88,10 @@ const SEED_AUDIT_LOGS: AuditLog[] = [
 ];
 
 const SEED_TX: PointTransaction[] = [
-    { id: 't1', date: '2026-01-15', amount: 500, reason: 'Safe Driving Bonus', sponsorName: 'FastLane Logistics', driverName: 'John Trucker', type: 'MANUAL' },
-    { id: 't2', date: '2026-01-18', amount: 200, reason: 'On-time Delivery', sponsorName: 'FastLane Logistics', driverName: 'John Trucker', type: 'MANUAL' },
-    { id: 't3', date: '2026-01-22', amount: 100, reason: 'Clean Inspection', sponsorName: 'FastLane Logistics', driverName: 'Sarah Swift', type: 'MANUAL' },
-    { id: 't4', date: '2026-01-25', amount: -5000, reason: 'Purchase: Wireless Headset', sponsorName: 'FastLane Logistics', driverName: 'John Trucker', type: 'PURCHASE' }
+    { id: 't1', date: '2026-01-15', amount: 500, reason: 'Safe Driving Bonus', sponsorName: 'FastLane Logistics', driverName: 'John Trucker', actorName: 'Alice Logistics', type: 'MANUAL' },
+    { id: 't2', date: '2026-01-18', amount: 200, reason: 'On-time Delivery', sponsorName: 'FastLane Logistics', driverName: 'John Trucker', actorName: 'Alice Logistics', type: 'MANUAL' },
+    { id: 't3', date: '2026-01-22', amount: 100, reason: 'Clean Inspection', sponsorName: 'FastLane Logistics', driverName: 'Sarah Swift', actorName: 'Alice Logistics', type: 'MANUAL' },
+    { id: 't4', date: '2026-01-25', amount: -5000, reason: 'Purchase: Wireless Headset', sponsorName: 'FastLane Logistics', driverName: 'John Trucker', actorName: 'John Trucker', type: 'PURCHASE' }
 ];
 
 // --- PUBLIC EXPORTS ---
@@ -436,7 +436,7 @@ export const processApplication = async (appId: string, approved: boolean) => {
 };
 
 // Points
-export const updateDriverPoints = async (driverId: string, amount: number, reason: string, sponsorName: string, sponsorId?: string, type: 'MANUAL' | 'AUTOMATED' | 'PURCHASE' = 'MANUAL') => {
+export const updateDriverPoints = async (driverId: string, amount: number, reason: string, sponsorName: string, sponsorId?: string, type: 'MANUAL' | 'AUTOMATED' | 'PURCHASE' = 'MANUAL', actorName?: string) => {
     if (useMockDB()) {
         const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
         const user = users.find(u => u.id === driverId);
@@ -459,6 +459,7 @@ export const updateDriverPoints = async (driverId: string, amount: number, reaso
                  reason, 
                  sponsorName, 
                  driverName: user.fullName, // Capture real name for reporting
+                 actorName: actorName, // Capture who did it
                  type: type 
              });
              
@@ -468,7 +469,7 @@ export const updateDriverPoints = async (driverId: string, amount: number, reaso
                      amount > 0 ? 'Points Awarded' : 'Points Deducted',
                      `${Math.abs(amount).toLocaleString()} points have been ${amount > 0 ? 'added to' : 'removed from'} your account. Reason: ${reason}`,
                      'POINT_CHANGE',
-                     { amount, reason, sponsorName, type }
+                     { amount, reason, sponsorName, type, actorName }
                  );
              }
 
@@ -478,7 +479,7 @@ export const updateDriverPoints = async (driverId: string, amount: number, reaso
         }
         return { success: false, message: "User not found" };
     }
-    return await MySQL.apiUpdateDriverPoints(driverId, amount, reason, sponsorId || '', type);
+    return await MySQL.apiUpdateDriverPoints(driverId, amount, reason, sponsorId || '', type, actorName);
 };
 
 export const getTransactions = async (): Promise<PointTransaction[]> => {
@@ -490,6 +491,27 @@ export const getCatalog = async (): Promise<Product[]> => {
     if (useMockDB()) return loadMock(DB_KEYS.CATALOG, SEED_CATALOG);
     return await MySQL.apiGetCatalog();
 };
+
+export const validateCartAvailability = async (cart: CartItem[]): Promise<{ valid: boolean, unavailableItems: string[] }> => {
+    if (useMockDB()) {
+        const catalog = loadMock(DB_KEYS.CATALOG, SEED_CATALOG);
+        const unavailable: string[] = [];
+        
+        for (const item of cart) {
+            // Find the item in the current "live" catalog
+            const product = catalog.find((p: Product) => p.id === item.id);
+            if (!product || !product.availability) {
+                unavailable.push(item.name);
+            }
+        }
+        
+        return { 
+            valid: unavailable.length === 0, 
+            unavailableItems: unavailable 
+        };
+    }
+    return await MySQL.apiValidateCartAvailability(cart);
+}
 
 export const addProduct = async (product: Partial<Product>) => {
     if(useMockDB()) {
@@ -510,7 +532,7 @@ export const addProduct = async (product: Partial<Product>) => {
 export const deleteProduct = async (id: string) => {
     if(useMockDB()) {
         let products = loadMock(DB_KEYS.CATALOG, SEED_CATALOG);
-        products = products.filter(p => p.id !== id);
+        products = products.filter((p: Product) => p.id !== id);
         persistMock(DB_KEYS.CATALOG, products);
     }
 }

@@ -1,16 +1,16 @@
+
 import React, { useState, useEffect } from 'react';
 import { MOCK_USERS, updateDriverPoints, getSponsor, updateSponsorFloor } from '../services/mockData';
-import { UserRole } from '../types';
+import { User, UserRole } from '../types';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Gift, AlertCircle, Settings, Users, CheckSquare, Square } from 'lucide-react';
 
-export const SponsorPoints: React.FC = () => {
-    const drivers = MOCK_USERS.filter(u => u.role === UserRole.DRIVER);
+export const SponsorPoints: React.FC<{user: User}> = ({ user }) => {
+    const drivers = MOCK_USERS.filter(u => u.role === UserRole.DRIVER && u.sponsorId === user.sponsorId);
     
-    // Assume current user is sponsor1 (s1) for this mock. In real app, get from Context/Auth
-    const currentSponsorId = 's1'; 
-    const currentSponsorName = 'FastLane Logistics';
-
+    // Dynamically get Sponsor Info based on logged-in user
+    const [sponsorName, setSponsorName] = useState('My Organization');
+    
     // State
     const [selectedDriverIds, setSelectedDriverIds] = useState<Set<string>>(new Set());
     const [points, setPoints] = useState<number | ''>(100);
@@ -21,11 +21,14 @@ export const SponsorPoints: React.FC = () => {
 
     // Load initial settings
     useEffect(() => {
-        const sponsor = getSponsor(currentSponsorId);
-        if (sponsor) {
-            setFloorPoints(sponsor.pointsFloor || 0);
+        if (user.sponsorId) {
+            const sponsor = getSponsor(user.sponsorId);
+            if (sponsor) {
+                setSponsorName(sponsor.name);
+                setFloorPoints(sponsor.pointsFloor || 0);
+            }
         }
-    }, [currentSponsorId]);
+    }, [user.sponsorId]);
 
     const toggleDriver = (id: string) => {
         const newSelected = new Set(selectedDriverIds);
@@ -47,10 +50,12 @@ export const SponsorPoints: React.FC = () => {
 
     const handleFloorUpdate = (e: React.FormEvent) => {
         e.preventDefault();
-        const success = updateSponsorFloor(currentSponsorId, Number(floorPoints));
-        if (success) {
-            setNotification({ message: 'Points Floor setting updated successfully.', type: 'success' });
-            setIsSettingsOpen(false);
+        if (user.sponsorId) {
+            const success = updateSponsorFloor(user.sponsorId, Number(floorPoints));
+            if (success) {
+                setNotification({ message: 'Points Floor setting updated successfully.', type: 'success' });
+                setIsSettingsOpen(false);
+            }
         }
     };
 
@@ -62,6 +67,11 @@ export const SponsorPoints: React.FC = () => {
             return;
         }
 
+        if (!user.sponsorId) {
+             setNotification({ message: 'Error: You are not associated with a sponsor organization.', type: 'error' });
+             return;
+        }
+
         let successCount = 0;
         let failCount = 0;
         let failReasons: string[] = [];
@@ -71,9 +81,10 @@ export const SponsorPoints: React.FC = () => {
                 driverId, 
                 Number(points), 
                 reason, 
-                currentSponsorName,
-                currentSponsorId,
-                'MANUAL' // Mark as Manual
+                sponsorName,
+                user.sponsorId,
+                'MANUAL', // Mark as Manual
+                user.fullName // Pass the actor name (current user)
             );
 
             if (result.success) {
@@ -146,7 +157,7 @@ export const SponsorPoints: React.FC = () => {
                                             onClick={toggleAll}
                                             className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                                         >
-                                            {selectedDriverIds.size === drivers.length ? 'Deselect All' : 'Select All'}
+                                            {selectedDriverIds.size === drivers.length && drivers.length > 0 ? 'Deselect All' : 'Select All'}
                                         </button>
                                     </div>
                                     <div className="border rounded-md max-h-64 overflow-y-auto bg-gray-50 p-2 space-y-2">
@@ -172,7 +183,7 @@ export const SponsorPoints: React.FC = () => {
                                                 </div>
                                             </div>
                                         ))}
-                                        {drivers.length === 0 && <p className="text-center text-sm text-gray-500 py-4">No drivers found.</p>}
+                                        {drivers.length === 0 && <p className="text-center text-sm text-gray-500 py-4">No drivers associated with your organization found.</p>}
                                     </div>
                                 </div>
 
@@ -263,8 +274,8 @@ export const SponsorPoints: React.FC = () => {
                             <hr className="my-4 border-gray-200" />
                             
                             <div className="mb-2">
-                                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Ratio</label>
-                                <p className="text-lg font-semibold text-gray-900">0.01 $/pt</p>
+                                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Organization</label>
+                                <p className="text-sm font-semibold text-gray-900">{sponsorName}</p>
                             </div>
                         </div>
                     </div>

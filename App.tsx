@@ -293,7 +293,7 @@ const App: React.FC = () => {
             
             <Route path="/sponsor/points" element={
               <ProtectedRoute user={user}>
-                 {user?.role === UserRole.SPONSOR ? <SponsorPoints /> : <Navigate to="/dashboard" replace />}
+                 {user?.role === UserRole.SPONSOR ? <SponsorPoints user={user!} /> : <Navigate to="/dashboard" replace />}
               </ProtectedRoute>
             } />
 

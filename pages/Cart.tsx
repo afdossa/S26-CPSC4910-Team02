@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { CartItem, User, SponsorOrganization } from '../types';
-import { getSponsors, updateDriverPoints } from '../services/mockData';
+import { getSponsors, updateDriverPoints, validateCartAvailability } from '../services/mockData';
 import { Trash2, Plus, Minus, ShoppingCart, CreditCard, ArrowLeft, Loader, CheckCircle, Receipt, ArrowRight, Package } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -47,6 +47,15 @@ export const Cart: React.FC<CartProps> = ({ user, cart, updateQuantity, removeIt
 
     setLoading(true);
     try {
+      // Step 1: Validate availability
+      const validation = await validateCartAvailability(cart);
+      if (!validation.valid) {
+          alert(`Checkout Failed: The following items are no longer available:\n- ${validation.unavailableItems.join('\n- ')}\n\nPlease remove them from your cart.`);
+          setLoading(false);
+          return;
+      }
+
+      // Step 2: Process transaction
       const result = await updateDriverPoints(
         user.id,
         -totalPoints,
