@@ -12,6 +12,13 @@ interface DashboardProps {
   onUpdateUser?: (user: User) => void;
 }
 
+const StatusBadge = ({ active, mockName, realName }: { active: boolean, mockName: string, realName: string }) => (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${active ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200' : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200'}`}>
+        {active ? <AlertCircle className="w-3 h-3 mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+        {active ? `MOCK (${mockName})` : `LIVE (${realName})`}
+    </span>
+);
+
 const DriverDashboard: React.FC<DashboardProps> = ({ user, onUpdateUser }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -190,7 +197,7 @@ const DriverDashboard: React.FC<DashboardProps> = ({ user, onUpdateUser }) => {
 
   if (!user.sponsorId && !pendingApp) {
       return (
-          <div className="max-w-2xl mx-auto space-y-6">
+          <div className="max-w-2xl mx-auto space-y-6 py-8 px-4">
               <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
                   <div className="text-center mb-8">
                       <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Welcome, {user.fullName}!</h2>
@@ -273,7 +280,7 @@ const DriverDashboard: React.FC<DashboardProps> = ({ user, onUpdateUser }) => {
       : activeSponsor?.name;
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       <div className="flex border-b border-gray-200 dark:border-slate-700">
           <button 
             onClick={() => { setActiveTab('overview'); navigate('/dashboard'); }}
@@ -689,7 +696,7 @@ const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
              <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Sponsor Overview: {user.fullName}</h2>
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -810,7 +817,7 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
             <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">System Administration</h2>
                 
@@ -882,6 +889,48 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
                         </button>
                     </div>
                 </div>
+            </div>
+
+            {/* Developer Control Panel */}
+            <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-8 border border-gray-100 dark:border-slate-700 relative overflow-hidden">
+                 <div className="flex items-center justify-between mb-8">
+                    <div>
+                        <h3 className="text-xl font-black flex items-center text-gray-900 dark:text-white">
+                            <Activity className="w-6 h-6 mr-2 text-indigo-500" /> Developer Control Panel
+                        </h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Manage real-time service connections and system state.</p>
+                    </div>
+                    <button 
+                        onClick={toggleMaster}
+                        className={`flex items-center px-6 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${isMasterTestMode ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-green-600 text-white hover:bg-green-700'}`}
+                    >
+                        <Power className="w-4 h-4 mr-2" /> {isMasterTestMode ? 'Enable Prod' : 'Enable Mock'}
+                    </button>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                     <div className="border border-gray-200 dark:border-slate-700 rounded-2xl p-6 bg-gray-50 dark:bg-slate-900/50">
+                         <div className="flex justify-between items-center mb-4">
+                             <h4 className="font-bold text-gray-700 dark:text-gray-200 text-sm">Auth Source</h4>
+                             <StatusBadge active={config.useMockAuth} mockName="Local" realName="Firebase" />
+                         </div>
+                         <button onClick={() => toggleService('useMockAuth')} className="w-full py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg text-xs font-bold hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-200 transition-colors">Toggle Auth</button>
+                     </div>
+                     <div className="border border-gray-200 dark:border-slate-700 rounded-2xl p-6 bg-gray-50 dark:bg-slate-900/50">
+                         <div className="flex justify-between items-center mb-4">
+                             <h4 className="font-bold text-gray-700 dark:text-gray-200 text-sm">DB Source</h4>
+                             <StatusBadge active={config.useMockDB} mockName="Local" realName="AWS RDS" />
+                         </div>
+                         <button onClick={() => toggleService('useMockDB')} className="w-full py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg text-xs font-bold hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-200 transition-colors">Toggle DB</button>
+                     </div>
+                     <div className="border border-gray-200 dark:border-slate-700 rounded-2xl p-6 bg-gray-50 dark:bg-slate-900/50">
+                         <div className="flex justify-between items-center mb-4">
+                             <h4 className="font-bold text-gray-700 dark:text-gray-200 text-sm">ETL Pipeline</h4>
+                             <StatusBadge active={config.useMockRedshift} mockName="Mock" realName="Glue" />
+                         </div>
+                         <button onClick={() => toggleService('useMockRedshift')} className="w-full py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg text-xs font-bold hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-200 transition-colors">Toggle ETL</button>
+                     </div>
+                 </div>
             </div>
         </div>
     );
