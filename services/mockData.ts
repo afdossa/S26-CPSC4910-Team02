@@ -1,5 +1,5 @@
 
-import { User, UserRole, Product, SponsorOrganization, AboutData, AuditLog, PointTransaction, DriverApplication, PendingUser, Notification, GlobalSettings, CartItem } from '../types';
+import { User, UserRole, Product, SponsorOrganization, AboutData, AuditLog, PointTransaction, DriverApplication, PendingUser, Notification, GlobalSettings, CartItem, Message } from '../types';
 import { getConfig, isTestMode } from './config';
 import * as MySQL from './mysql';
 
@@ -19,7 +19,8 @@ const DB_KEYS = {
     TX: 'gdip_db_tx_v1',
     APPS: 'gdip_db_apps_v1',
     NOTIFICATIONS: 'gdip_db_notifications_v1',
-    SETTINGS: 'gdip_db_global_settings_v1'
+    SETTINGS: 'gdip_db_global_settings_v1',
+    MESSAGES: 'gdip_db_messages_v1'
 };
 
 // --- MOCK STORAGE HELPERS ---
@@ -44,10 +45,10 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
 };
 
 const SEED_USERS: User[] = [
-  { id: 'u1', username: 'driver1', role: UserRole.DRIVER, fullName: 'John Trucker', email: 'john.trucker@example.com', phoneNumber: '555-0101', address: '123 Haul St', bio: 'Veteran driver with over 15 years on the open road. Always prioritizing safety and fuel efficiency.', sponsorId: 's1', pointsBalance: 5400, avatarUrl: 'https://picsum.photos/200/200?random=1', isActive: true, preferences: { alertsEnabled: true } },
+  { id: 'u1', username: 'driver1', role: UserRole.DRIVER, fullName: 'John Trucker', email: 'john.trucker@example.com', phoneNumber: '555-0101', address: '123 Haul St', bio: 'Veteran driver with over 15 years on the open road. Always prioritizing safety and fuel efficiency.', sponsorId: 's1', pointsBalance: 5400, avatarUrl: 'https://picsum.photos/200/200?random=1', isActive: true, preferences: { alertsEnabled: true, orderAlertsEnabled: true } },
   { id: 'u2', username: 'sponsor1', role: UserRole.SPONSOR, fullName: 'Alice Logistics', email: 'alice@fastlane.com', sponsorId: 's1', bio: 'Logistics coordinator at FastLane. Dedicated to supporting our driver fleet.', avatarUrl: 'https://picsum.photos/200/200?random=2', isActive: true, preferences: { alertsEnabled: true } },
   { id: 'u3', username: 'admin', role: UserRole.ADMIN, fullName: 'System Admin', email: 'admin@system.com', bio: 'Platform administrator for the Good Driver Incentive Program.', avatarUrl: 'https://picsum.photos/200/200?random=3', isActive: true, preferences: { alertsEnabled: true } },
-  { id: 'u4', username: 'driver2', role: UserRole.DRIVER, fullName: 'Sarah Swift', email: 'sarah@express.com', sponsorId: 's1', pointsBalance: 3200, avatarUrl: 'https://picsum.photos/200/200?random=4', isActive: true, preferences: { alertsEnabled: true } }
+  { id: 'u4', username: 'driver2', role: UserRole.DRIVER, fullName: 'Sarah Swift', email: 'sarah@express.com', sponsorId: 's1', pointsBalance: 3200, avatarUrl: 'https://picsum.photos/200/200?random=4', isActive: true, preferences: { alertsEnabled: true, orderAlertsEnabled: true } }
 ];
 const SEED_SPONSORS: SponsorOrganization[] = [
   { 
@@ -94,6 +95,11 @@ const SEED_TX: PointTransaction[] = [
     { id: 't4', date: '2026-01-25', amount: -5000, reason: 'Purchase: Wireless Headset', sponsorName: 'FastLane Logistics', driverName: 'John Trucker', actorName: 'John Trucker', type: 'PURCHASE' }
 ];
 
+const SEED_MESSAGES: Message[] = [
+    { id: 'm1', senderId: 'u2', receiverId: 'u1', text: 'Welcome to the team, John! Let us know if you need anything.', timestamp: '2026-01-10T09:00:00Z', isRead: true },
+    { id: 'm2', senderId: 'u1', receiverId: 'u2', text: 'Thanks Alice! Excited to be here.', timestamp: '2026-01-10T09:05:00Z', isRead: true }
+];
+
 // --- PUBLIC EXPORTS ---
 export const MOCK_USERS = SEED_USERS;
 export const MOCK_CATALOG = SEED_CATALOG;
@@ -137,7 +143,7 @@ export const getUserProfile = async (uid: string): Promise<User | undefined> => 
     return await MySQL.apiGetUserProfile(uid);
 };
 
-export const updateUserPreferences = async (userId: string, prefs: { alertsEnabled: boolean }) => {
+export const updateUserPreferences = async (userId: string, prefs: Partial<User['preferences']>) => {
     if (useMockDB()) {
         const users: User[] = loadMock(DB_KEYS.USERS, SEED_USERS);
         const user = users.find(u => u.id === userId);
@@ -217,7 +223,7 @@ export const createProfile = async (uid: string, username: string, fullName: str
         avatarUrl: `https://picsum.photos/200/200?random=${Date.now()}`,
         pointsBalance: role === UserRole.DRIVER ? 0 : undefined,
         isActive: true,
-        preferences: { alertsEnabled: true }
+        preferences: { alertsEnabled: true, orderAlertsEnabled: true }
     };
 
     if (useMockDB()) {
@@ -287,7 +293,7 @@ export const createUser = async (username: string, fullName: string, role: UserR
             avatarUrl: `https://picsum.photos/200/200?random=${Date.now()}`,
             pointsBalance: role === UserRole.DRIVER ? 0 : undefined,
             isActive: true,
-            preferences: { alertsEnabled: true }
+            preferences: { alertsEnabled: true, orderAlertsEnabled: true }
         };
         users.push(newUser);
         persistMock(DB_KEYS.USERS, users);
@@ -572,6 +578,37 @@ export const getAuditLogs = async (): Promise<AuditLog[]> => {
     if (useMockDB()) return loadMock(DB_KEYS.LOGS, SEED_AUDIT_LOGS);
     return [];
 }
+
+// Chat Functionality
+export const getMessages = async (userId: string, otherId: string): Promise<Message[]> => {
+    if (useMockDB()) {
+        const all: Message[] = loadMock(DB_KEYS.MESSAGES, SEED_MESSAGES);
+        return all.filter(m => 
+            (m.senderId === userId && m.receiverId === otherId) || 
+            (m.senderId === otherId && m.receiverId === userId)
+        ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    }
+    return await MySQL.apiGetMessages(userId, otherId);
+};
+
+export const sendMessage = async (senderId: string, receiverId: string, text: string): Promise<boolean> => {
+    const msg: Message = {
+        id: `m${Date.now()}`,
+        senderId,
+        receiverId,
+        text,
+        timestamp: new Date().toISOString(),
+        isRead: false
+    };
+
+    if (useMockDB()) {
+        const all: Message[] = loadMock(DB_KEYS.MESSAGES, SEED_MESSAGES);
+        all.push(msg);
+        persistMock(DB_KEYS.MESSAGES, all);
+        return true;
+    }
+    return await MySQL.apiSendMessage(msg);
+};
 
 export const MOCK_ABOUT_DATA: AboutData = {
   teamNumber: "Team-2",

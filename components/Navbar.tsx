@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { User, UserRole } from '../types';
-import { Truck, LogOut, LayoutDashboard, ShoppingBag, FileBarChart, Info, Menu, X, Bell, Settings } from 'lucide-react';
+import { Truck, LogOut, LayoutDashboard, ShoppingBag, FileBarChart, Info, Menu, X, Bell, Settings, MessageSquare } from 'lucide-react';
 import { getNotifications } from '../services/mockData';
 import { SettingsModal } from './SettingsModal';
 
@@ -89,6 +89,13 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, isDark, toggleTh
                           {unreadCount}
                       </span>
                   )}
+                </Link>
+              )}
+
+              {(user?.role === UserRole.DRIVER || user?.role === UserRole.SPONSOR) && (
+                <Link to="/chat" className={`inline-flex items-center px-1 pt-1 text-sm font-bold uppercase tracking-widest transition-all ${isActive('/chat')}`}>
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Messages
                 </Link>
               )}
 
@@ -182,6 +189,11 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, isDark, toggleTh
                         Notifications
                         {unreadCount > 0 && <span className="ml-2 bg-red-500 text-white text-[10px] px-2 rounded-full">{unreadCount}</span>}
                       </Link>
+                    )}
+                    {(user.role === UserRole.DRIVER || user.role === UserRole.SPONSOR) && (
+                        <Link to="/chat" onClick={() => setIsMobileMenuOpen(false)} className={`block pl-3 pr-4 py-2 border-l-4 text-base font-medium ${isMobileActive('/chat')}`}>
+                            Messages
+                        </Link>
                     )}
                     {user.role === UserRole.DRIVER && (
                       <Link to="/catalog" onClick={() => setIsMobileMenuOpen(false)} className={`block pl-3 pr-4 py-2 border-l-4 text-base font-medium ${isMobileActive('/catalog')}`}>

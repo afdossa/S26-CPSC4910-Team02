@@ -1,17 +1,18 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, UserRole, DriverApplication, SponsorOrganization, PointTransaction, Notification, CartItem } from '../types';
-import { submitApplication, getDriverApplication, getSponsors, getTransactions, updateUserPreferences, getUserProfile, getCatalog, updateSponsorRules, getNotifications, markNotificationAsRead } from '../services/mockData';
+import { submitApplication, getDriverApplication, getSponsors, getTransactions, updateUserPreferences, getUserProfile, getCatalog, updateSponsorRules, getNotifications, markNotificationAsRead, getAllUsers } from '../services/mockData';
 import { triggerRedshiftArchive } from '../services/mysql';
 import { getConfig, updateConfig, isTestMode } from '../services/config';
-import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X, DollarSign, RefreshCw, User as UserIcon, Receipt, Package, Inbox, Calendar, Settings, Globe, Download, Activity, Award, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X, DollarSign, RefreshCw, User as UserIcon, Receipt, Package, Inbox, Calendar, Settings, Globe, Download, Activity, Award, BarChart3, Truck } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
   user: User;
+  onUpdateUser?: (user: User) => void;
 }
 
-const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
+const DriverDashboard: React.FC<DashboardProps> = ({ user, onUpdateUser }) => {
   const location = useLocation();
   const navigate = useNavigate();
   
@@ -33,6 +34,7 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
 
   // Preference State
   const [alertsEnabled, setAlertsEnabled] = useState(user.preferences?.alertsEnabled ?? true);
+  const [orderAlertsEnabled, setOrderAlertsEnabled] = useState(user.preferences?.orderAlertsEnabled ?? true);
   
   // Filter State
   const [historyFilter, setHistoryFilter] = useState<'ALL' | 'MANUAL' | 'PURCHASE'>('ALL');
@@ -55,6 +57,7 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
         
         if (freshUser && freshUser.preferences) {
             setAlertsEnabled(freshUser.preferences.alertsEnabled);
+            setOrderAlertsEnabled(freshUser.preferences.orderAlertsEnabled ?? true);
         }
         if (spList.length > 0) setSponsorId(spList[0].id);
 
@@ -101,6 +104,20 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
     const newVal = !alertsEnabled;
     setAlertsEnabled(newVal);
     await updateUserPreferences(user.id, { alertsEnabled: newVal });
+    if (onUpdateUser) {
+        const fresh = await getUserProfile(user.id);
+        if (fresh) onUpdateUser(fresh);
+    }
+  };
+
+  const toggleOrderAlerts = async () => {
+    const newVal = !orderAlertsEnabled;
+    setOrderAlertsEnabled(newVal);
+    await updateUserPreferences(user.id, { orderAlertsEnabled: newVal });
+    if (onUpdateUser) {
+        const fresh = await getUserProfile(user.id);
+        if (fresh) onUpdateUser(fresh);
+    }
   };
 
   const filteredTransactions = transactions.filter(t => {
@@ -495,18 +512,22 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
               {/* Preferences inside Notifications Tab */}
               <div className="bg-white dark:bg-slate-800 shadow rounded-2xl overflow-hidden border border-blue-100 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
-                  <div className="px-6 py-4 flex items-center justify-between">
+                  <div className="px-6 py-4 flex items-center justify-between border-b border-blue-100/50 dark:border-blue-900/30">
                       <div className="flex items-center">
                           <Settings className="h-5 w-5 text-blue-500 mr-2" />
                           <div>
                               <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest">Notification Preferences</h3>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">Manage how you receive alerts about your points.</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">Manage how you receive alerts.</p>
                           </div>
                       </div>
-                      <div className="flex items-center space-x-3">
-                          <span className={`text-xs font-bold uppercase tracking-tighter ${alertsEnabled ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`}>
-                              Point Change Alerts {alertsEnabled ? 'ON' : 'OFF'}
-                          </span>
+                  </div>
+                  <div className="px-6 py-4 space-y-4">
+                      {/* Point Changes */}
+                      <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                              <TrendingUp className="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" />
+                              <span className="text-sm font-bold text-gray-700 dark:text-gray-200">Point Changes</span>
+                          </div>
                           <button
                               type="button"
                               onClick={toggleAlerts}
@@ -515,6 +536,23 @@ const DriverDashboard: React.FC<{ user: User }> = ({ user }) => {
                               aria-checked={alertsEnabled}
                           >
                               <span aria-hidden="true" className={`${alertsEnabled ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200`} />
+                          </button>
+                      </div>
+
+                      {/* Order Confirmations */}
+                      <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                              <Receipt className="w-4 h-4 text-green-600 dark:text-green-400 mr-2" />
+                              <span className="text-sm font-bold text-gray-700 dark:text-gray-200">Order Confirmations</span>
+                          </div>
+                          <button
+                              type="button"
+                              onClick={toggleOrderAlerts}
+                              className={`${orderAlertsEnabled ? 'bg-green-600' : 'bg-gray-300 dark:bg-gray-600'} relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
+                              role="switch"
+                              aria-checked={orderAlertsEnabled}
+                          >
+                              <span aria-hidden="true" className={`${orderAlertsEnabled ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200`} />
                           </button>
                       </div>
                   </div>
@@ -722,11 +760,29 @@ const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
 const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
     const [config, setConfig] = useState(getConfig());
     const [archiving, setArchiving] = useState(false);
+    const [stats, setStats] = useState({ sponsors: 0, users: 0, drivers: 0 });
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const handleConfigChange = () => setConfig(getConfig());
         window.addEventListener('config-change', handleConfigChange);
         return () => window.removeEventListener('config-change', handleConfigChange);
+    }, []);
+
+    useEffect(() => {
+        const loadStats = async () => {
+            const [allUsers, allSponsors] = await Promise.all([
+                getAllUsers(),
+                getSponsors()
+            ]);
+            setStats({
+                users: allUsers.length,
+                drivers: allUsers.filter(u => u.role === UserRole.DRIVER).length,
+                sponsors: allSponsors.length
+            });
+            setLoading(false);
+        };
+        loadStats();
     }, []);
 
     const toggleService = (key: keyof typeof config) => {
@@ -756,8 +812,35 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
     return (
         <div className="space-y-6">
             <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">System Administration</h2>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">System Administration</h2>
                 
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                     <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-lg border border-indigo-100 dark:border-indigo-900">
+                         <h3 className="text-indigo-800 dark:text-indigo-300 font-semibold flex items-center">
+                            <Building className="w-4 h-4 mr-2" /> Total Sponsors
+                         </h3>
+                         <p className="text-3xl font-bold text-indigo-900 dark:text-indigo-100 mt-2">
+                            {loading ? <Loader className="w-6 h-6 animate-spin"/> : stats.sponsors}
+                         </p>
+                     </div>
+                     <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900">
+                         <h3 className="text-blue-800 dark:text-blue-300 font-semibold flex items-center">
+                            <Truck className="w-4 h-4 mr-2" /> Active Drivers
+                         </h3>
+                         <p className="text-3xl font-bold text-blue-900 dark:text-blue-100 mt-2">
+                            {loading ? <Loader className="w-6 h-6 animate-spin"/> : stats.drivers}
+                         </p>
+                     </div>
+                     <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg border border-purple-100 dark:border-purple-900">
+                         <h3 className="text-purple-800 dark:text-purple-300 font-semibold flex items-center">
+                            <UserIcon className="w-4 h-4 mr-2" /> Total Users
+                         </h3>
+                         <p className="text-3xl font-bold text-purple-900 dark:text-purple-100 mt-2">
+                            {loading ? <Loader className="w-6 h-6 animate-spin"/> : stats.users}
+                         </p>
+                     </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                      <Link to="/admin/sponsors" className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-xl border border-blue-100 dark:border-blue-800 hover:shadow-md transition-shadow">
                         <Building className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-3" />
@@ -804,8 +887,8 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
     );
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
-  if (user.role === UserRole.DRIVER) return <DriverDashboard user={user} />;
+export const Dashboard: React.FC<DashboardProps> = ({ user, onUpdateUser }) => {
+  if (user.role === UserRole.DRIVER) return <DriverDashboard user={user} onUpdateUser={onUpdateUser} />;
   if (user.role === UserRole.SPONSOR) return <SponsorDashboard user={user} />;
   if (user.role === UserRole.ADMIN) return <AdminDashboard user={user} />;
   return <div>Unknown User Role</div>;
