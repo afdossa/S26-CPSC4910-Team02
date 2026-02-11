@@ -19,7 +19,8 @@ export interface User {
   pointsBalance?: number; // Only for drivers
   isActive?: boolean; // Track if account is banned/active
   preferences?: {
-    alertsEnabled: boolean;
+    alertsEnabled: boolean; // Point Change Alerts
+    orderAlertsEnabled?: boolean; // Order Confirmation Alerts
   };
 }
 
@@ -40,6 +41,15 @@ export interface Notification {
   isRead: boolean;
   type: 'ORDER_CONFIRMATION' | 'POINT_CHANGE' | 'SYSTEM';
   metadata?: any; // For storing order details or specific point info
+}
+
+export interface Message {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  text: string;
+  timestamp: string;
+  isRead: boolean;
 }
 
 export interface PendingUser {

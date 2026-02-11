@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, PropsWithChildren, useCallback } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
@@ -8,6 +7,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Catalog } from './pages/Catalog';
 import { Reports } from './pages/Reports';
 import { Profile } from './pages/Profile';
+import { Chat } from './pages/Chat';
 import { SponsorApplications } from './pages/SponsorApplications';
 import { SponsorPoints } from './pages/SponsorPoints';
 import { SponsorCatalog } from './pages/SponsorCatalog';
@@ -251,13 +251,19 @@ const App: React.FC = () => {
             
             <Route path="/dashboard" element={
               <ProtectedRoute user={user}>
-                <Dashboard user={user!} />
+                <Dashboard user={user!} onUpdateUser={(u) => setUser(u)} />
               </ProtectedRoute>
             } />
 
             <Route path="/profile" element={
               <ProtectedRoute user={user}>
                 <Profile user={user!} onUpdate={(updated) => setUser(updated)} />
+              </ProtectedRoute>
+            } />
+
+            <Route path="/chat" element={
+              <ProtectedRoute user={user}>
+                <Chat user={user!} />
               </ProtectedRoute>
             } />
 
@@ -325,9 +331,7 @@ const App: React.FC = () => {
 
         <footer className="bg-white dark:bg-slate-800 border-t border-gray-200 dark:border-slate-700 transition-colors duration-200">
           <div className="max-w-7xl mx-auto py-6 px-4 overflow-hidden sm:px-6 lg:px-8">
-            <p className="mt-1 text-center text-sm text-gray-400 dark:text-gray-500">
-              &copy; 2026 Good Driver Incentive Program.
-            </p>
+            <p className="mt-1 text-center text-base text-gray-400">&copy; 2025 DriveWell, Inc. All rights reserved.</p>
           </div>
         </footer>
       </div>

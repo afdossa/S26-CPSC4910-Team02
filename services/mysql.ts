@@ -1,5 +1,5 @@
 
-import { User, UserRole, DriverApplication, SponsorOrganization, Product, PointTransaction, Notification, CartItem } from '../types';
+import { User, UserRole, DriverApplication, SponsorOrganization, Product, PointTransaction, Notification, CartItem, Message } from '../types';
 import { AWS_API_CONFIG, getConfig } from './config';
 
 /**
@@ -22,6 +22,7 @@ interface ProdDB {
     products: Product[];
     transactions: PointTransaction[];
     notifications: Notification[];
+    messages: Message[];
 }
 
 const loadProdDB = (): ProdDB => {
@@ -53,7 +54,8 @@ const loadProdDB = (): ProdDB => {
             { id: 'p2', name: 'Truck GPS', description: 'Advanced routing system.', pricePoints: 15000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=11', createdAt: '2025-01-15' }
         ],
         transactions: [],
-        notifications: []
+        notifications: [],
+        messages: []
     };
 };
 
@@ -142,7 +144,7 @@ export const apiDeleteUser = async (userId: string): Promise<boolean> => {
     return false;
 };
 
-export const apiUpdateUserPreferences = async (userId: string, prefs: { alertsEnabled: boolean }) => {
+export const apiUpdateUserPreferences = async (userId: string, prefs: Partial<User['preferences']>) => {
     const db = loadProdDB();
     const user = db.users.find(u => u.id === userId);
     if (user) {
@@ -345,4 +347,21 @@ export const apiUpdateDriverPoints = async (userId: string, amount: number, reas
 
 export const apiGetTransactions = async (): Promise<PointTransaction[]> => {
     return loadProdDB().transactions;
+};
+
+// --- MESSAGES ---
+export const apiGetMessages = async (userId: string, otherId: string): Promise<Message[]> => {
+    const db = loadProdDB();
+    return (db.messages || []).filter(m => 
+        (m.senderId === userId && m.receiverId === otherId) || 
+        (m.senderId === otherId && m.receiverId === userId)
+    ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+};
+
+export const apiSendMessage = async (msg: Message): Promise<boolean> => {
+    const db = loadProdDB();
+    if (!db.messages) db.messages = [];
+    db.messages.push(msg);
+    saveProdDB(db);
+    return true;
 };
