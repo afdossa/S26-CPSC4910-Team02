@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, PropsWithChildren, useCallback } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
@@ -331,7 +332,7 @@ const App: React.FC = () => {
 
         <footer className="bg-white dark:bg-slate-800 border-t border-gray-200 dark:border-slate-700 transition-colors duration-200">
           <div className="max-w-7xl mx-auto py-6 px-4 overflow-hidden sm:px-6 lg:px-8">
-            <p className="mt-1 text-center text-base text-gray-400">&copy; 2025 DriveWell, Inc. All rights reserved.</p>
+            <p className="mt-1 text-center text-base text-gray-400">&copy; 2026 DriveWell, Inc. - Team 2. All rights reserved.</p>
           </div>
         </footer>
       </div>
