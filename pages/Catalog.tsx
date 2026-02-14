@@ -2,9 +2,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 // Added Link to imports from react-router-dom
 import { useLocation, Link } from 'react-router-dom';
-import { getCatalog, getSponsors, updateDriverPoints, addNotification, getTransactions } from '../services/mockData';
+import { getCatalog, getSponsors, updateDriverPoints, addNotification, getTransactions, requestRefund } from '../services/mockData';
 import { Product, User, SponsorOrganization, CartItem, PointTransaction } from '../types';
-import { Search, ShoppingCart, DollarSign, Tag, Loader, Check, X, Trash2, Plus, Minus, CreditCard, CheckCircle, AlertCircle, Receipt, Package, ArrowRight, History, Clock, Calendar } from 'lucide-react';
+import { Search, ShoppingCart, DollarSign, Tag, Loader, Check, X, Trash2, Plus, Minus, CreditCard, CheckCircle, AlertCircle, Receipt, Package, ArrowRight, History, Clock, Calendar, Undo2, MessageCircle } from 'lucide-react';
 
 interface CatalogProps {
   user: User;
@@ -41,6 +41,11 @@ export const Catalog: React.FC<CatalogProps> = ({
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [lastOrder, setLastOrder] = useState<{ items: CartItem[], total: number, id: string } | null>(null);
 
+  // Refund State
+  const [refundingTx, setRefundingTx] = useState<PointTransaction | null>(null);
+  const [refundReason, setRefundReason] = useState('');
+  const [isSubmittingRefund, setIsSubmittingRefund] = useState(false);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -50,8 +55,8 @@ export const Catalog: React.FC<CatalogProps> = ({
         getTransactions()
       ]);
       setProducts(catalogList);
-      // Filter for purchases only
-      setPurchaseHistory(txList.filter(tx => tx.type === 'PURCHASE'));
+      // Filter for purchases belonging to this driver
+      setPurchaseHistory(txList.filter(tx => tx.type === 'PURCHASE' && tx.driverId === user.id));
       
       if (user.sponsorId) {
         setActiveSponsor(sponsorList.find(s => s.id === user.sponsorId));
@@ -61,7 +66,7 @@ export const Catalog: React.FC<CatalogProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [user.sponsorId]);
+  }, [user.sponsorId, user.id]);
 
   useEffect(() => {
     loadData();
@@ -122,7 +127,8 @@ export const Catalog: React.FC<CatalogProps> = ({
         `Purchase: ${cart.map(i => `${i.name} (x${i.quantity})`).join(', ')}`,
         activeSponsor?.name || 'Sponsor',
         activeSponsor?.id,
-        'PURCHASE'
+        'PURCHASE',
+        user.fullName
       );
 
       if (result.success) {
@@ -161,6 +167,28 @@ export const Catalog: React.FC<CatalogProps> = ({
     }
   };
 
+  const handleRefundRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!refundingTx || !refundReason.trim()) return;
+
+    setIsSubmittingRefund(true);
+    try {
+        const success = await requestRefund(user.id, refundingTx.id, refundReason);
+        if (success) {
+            alert("Refund request submitted to your sponsor. You will receive a message once reviewed.");
+            setRefundingTx(null);
+            setRefundReason('');
+            loadData();
+        } else {
+            alert("Could not process refund request.");
+        }
+    } catch (e) {
+        console.error(e);
+    } finally {
+        setIsSubmittingRefund(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
@@ -173,6 +201,55 @@ export const Catalog: React.FC<CatalogProps> = ({
   return (
     <div className="relative min-h-[calc(100vh-4rem)] flex overflow-hidden">
       
+      {/* Refund Reason Modal */}
+      {refundingTx && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setRefundingTx(null)}></div>
+           <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-8 animate-in zoom-in-95 duration-200">
+                <div className="flex items-center mb-6">
+                    <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-xl mr-3">
+                        <Undo2 className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-bold dark:text-white">Request Refund</h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Transaction: {refundingTx.id}</p>
+                    </div>
+                </div>
+                
+                <form onSubmit={handleRefundRequest} className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Reason for Refund</label>
+                        <textarea 
+                            value={refundReason}
+                            onChange={(e) => setRefundReason(e.target.value)}
+                            className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl text-sm dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            placeholder="Please explain why you need a refund (e.g. item defective, wrong size)..."
+                            rows={4}
+                            required
+                        />
+                    </div>
+                    <div className="pt-2 flex flex-col gap-2">
+                        <button 
+                            type="submit"
+                            disabled={isSubmittingRefund}
+                            className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 shadow-lg shadow-blue-200 flex items-center justify-center disabled:opacity-50"
+                        >
+                            {isSubmittingRefund ? <Loader className="w-4 h-4 animate-spin mr-2" /> : <MessageCircle className="w-4 h-4 mr-2" />}
+                            Send to Sponsor
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={() => setRefundingTx(null)}
+                            className="w-full py-3 text-gray-500 dark:text-gray-400 font-bold hover:text-gray-700"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+           </div>
+        </div>
+      )}
+
       {showConfirmModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={() => setShowConfirmModal(false)}></div>
@@ -298,7 +375,7 @@ export const Catalog: React.FC<CatalogProps> = ({
         <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
             <div>
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Rewards Catalog</h1>
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-white uppercase tracking-tighter">Rewards Catalog</h1>
                 <p className="mt-2 text-gray-600 dark:text-gray-400">
                     Prices in USD based on 
                     <span className="font-bold text-blue-600 dark:text-blue-400"> {activeSponsor?.name || 'Standard'} </span> 
@@ -411,7 +488,7 @@ export const Catalog: React.FC<CatalogProps> = ({
           <div className="px-6 py-4 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between bg-white dark:bg-slate-800 sticky top-0">
             <div className="flex items-center">
               <History className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Redemption History</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white uppercase tracking-tighter">History</h2>
             </div>
             <button 
               onClick={() => setIsHistoryOpen(false)}
@@ -444,10 +521,32 @@ export const Catalog: React.FC<CatalogProps> = ({
                     {tx.reason.replace('Purchase: ', '')}
                   </h4>
                   <div className="mt-3 pt-3 border-t border-gray-50 dark:border-slate-700 flex justify-between items-center">
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">{tx.sponsorName}</span>
-                    <span className="text-xs font-bold text-green-600 dark:text-green-400">
-                      ~{getPriceUSD(Math.abs(tx.amount))}
-                    </span>
+                    <div>
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider block">{tx.sponsorName}</span>
+                        {tx.status && (
+                             <span className={`text-[8px] font-black uppercase mt-0.5 inline-block px-1 rounded ${
+                                tx.status === 'REFUNDED' ? 'bg-green-100 text-green-700' : 
+                                tx.status === 'REFUND_PENDING' ? 'bg-amber-100 text-amber-700' : 
+                                tx.status === 'REFUND_REJECTED' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+                             }`}>
+                                {tx.status.replace('_', ' ')}
+                             </span>
+                        )}
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                        <span className="text-xs font-bold text-green-600 dark:text-green-400">
+                        ~{getPriceUSD(Math.abs(tx.amount))}
+                        </span>
+                        {tx.status === 'COMPLETED' && (
+                            <button 
+                                onClick={() => setRefundingTx(tx)}
+                                className="text-[10px] font-black uppercase text-blue-600 hover:text-blue-700 flex items-center bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded transition-colors"
+                            >
+                                <Undo2 className="w-3 h-3 mr-1" />
+                                Refund
+                            </button>
+                        )}
+                    </div>
                   </div>
                 </div>
               ))
@@ -477,7 +576,7 @@ export const Catalog: React.FC<CatalogProps> = ({
           <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-white dark:bg-slate-800 sticky top-0">
             <div className="flex items-center">
               <ShoppingCart className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Your Cart</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white uppercase tracking-tighter">Your Cart</h2>
             </div>
             <button 
               onClick={() => setIsCartOpen(false)}
@@ -549,7 +648,7 @@ export const Catalog: React.FC<CatalogProps> = ({
               <button
                 onClick={initiateCheckout}
                 disabled={isPurchasing || !isAffordable}
-                className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all flex items-center justify-center ${
+                className={`w-full py-4 rounded-xl font-black uppercase text-white shadow-lg transition-all flex items-center justify-center ${
                   isPurchasing || !isAffordable
                   ? 'bg-gray-400 cursor-not-allowed' 
                   : 'bg-blue-600 hover:bg-blue-700 active:scale-95'

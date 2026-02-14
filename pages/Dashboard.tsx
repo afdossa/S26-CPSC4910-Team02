@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { User, UserRole, DriverApplication, SponsorOrganization, PointTransaction, Notification, CartItem } from '../types';
-import { submitApplication, getDriverApplication, getSponsors, getTransactions, updateUserPreferences, getUserProfile, getCatalog, updateSponsorRules, getNotifications, markNotificationAsRead, getAllUsers } from '../services/mockData';
+import { submitApplication, getDriverApplication, getSponsors, getTransactions, updateUserPreferences, getUserProfile, getCatalog, updateSponsorRules, getNotifications, markNotificationAsRead, getAllUsers, handleRefund } from '../services/mockData';
 import { triggerRedshiftArchive } from '../services/mysql';
 import { getConfig, updateConfig, isTestMode } from '../services/config';
-import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X, DollarSign, RefreshCw, User as UserIcon, Receipt, Package, Inbox, Calendar, Settings, Globe, Download, Activity, Award, BarChart3, Truck } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, ShieldCheck, AlertCircle, Building, Database, Server, Loader, CheckCircle, Power, Bell, Info, Filter, X, DollarSign, RefreshCw, User as UserIcon, Receipt, Package, Inbox, Calendar, Settings, Globe, Download, Activity, Award, BarChart3, Truck, Undo2, Users, Check } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
@@ -32,6 +32,12 @@ const DriverDashboard: React.FC<DashboardProps> = ({ user, onUpdateUser }) => {
   const [activeSponsor, setActiveSponsor] = useState<SponsorOrganization | undefined>(undefined);
   const [showAsDollars, setShowAsDollars] = useState(false);
   
+  // Scoped variables for Driver View
+  const isPending = !!pendingApp && pendingApp.status === 'PENDING';
+  const displaySponsorName = isPending 
+    ? (sponsors.find(s => s.id === pendingApp?.sponsorId)?.name || 'Sponsor')
+    : (activeSponsor?.name || 'Sponsor');
+
   // Application Form State
   const [sponsorId, setSponsorId] = useState('');
   const [license, setLicense] = useState('');
@@ -59,7 +65,7 @@ const DriverDashboard: React.FC<DashboardProps> = ({ user, onUpdateUser }) => {
         ]);
         setPendingApp(app);
         setSponsors(spList);
-        setTransactions(txList);
+        setTransactions(txList.filter(t => t.driverId === user.id));
         setNotifications(notifList);
         
         if (freshUser && freshUser.preferences) {
@@ -150,514 +156,158 @@ const DriverDashboard: React.FC<DashboardProps> = ({ user, onUpdateUser }) => {
           alert("No transaction history to export.");
           return;
       }
-
       const headers = ['Date', 'Type', 'Sponsor', 'Reason', 'Amount'];
-      const rows = transactions.map(t => [
-          t.date,
-          t.type || 'UNKNOWN',
-          `"${t.sponsorName.replace(/"/g, '""')}"`,
-          `"${t.reason.replace(/"/g, '""')}"`,
-          t.amount.toString()
-      ]);
-
-      const csvContent = [
-          headers.join(','),
-          ...rows.map(r => r.join(','))
-      ].join('\n');
-
+      const rows = transactions.map(t => [t.date, t.type || 'UNKNOWN', `"${t.sponsorName.replace(/"/g, '""')}"`, `"${t.reason.replace(/"/g, '""')}"`, t.amount.toString()]);
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `drivewell_history_${user.username}_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute('download', `history_${user.username}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
   };
 
-  // Performance Calculations
-  const calculatePerformance = () => {
+  const stats = (() => {
       const positiveTx = transactions.filter(t => t.amount > 0);
       const totalEarned = positiveTx.reduce((acc, t) => acc + t.amount, 0);
-      
-      const monthlyTotals: { [key: string]: number } = {};
-      positiveTx.forEach(t => {
-          const month = t.date.substring(0, 7); // YYYY-MM
-          monthlyTotals[month] = (monthlyTotals[month] || 0) + t.amount;
-      });
-      const uniqueMonths = Object.keys(monthlyTotals).length;
+      const months = new Set(positiveTx.map(t => t.date.substring(0, 7)));
+      const uniqueMonths = months.size;
       const avgMonthly = uniqueMonths > 0 ? Math.round(totalEarned / uniqueMonths) : 0;
-      
       return { totalEarned, avgMonthly, uniqueMonths };
-  };
-
-  const stats = calculatePerformance();
+  })();
 
   if (loading) return <div className="p-10 text-center dark:text-gray-300">Loading dashboard data...</div>;
 
   if (!user.sponsorId && !pendingApp) {
       return (
-          <div className="max-w-2xl mx-auto space-y-6 py-8 px-4">
-              <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
+          <div className="max-w-2xl mx-auto py-8 px-4">
+              <div className="bg-white dark:bg-slate-800 shadow rounded-2xl p-8 border border-gray-100 dark:border-slate-700">
                   <div className="text-center mb-8">
-                      <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Welcome, {user.fullName}!</h2>
-                      <p className="mt-2 text-lg text-gray-600 dark:text-gray-400">To start earning points, you need to join a Sponsor Organization.</p>
+                      <h2 className="text-3xl font-black text-gray-900 dark:text-white uppercase tracking-tighter">Welcome, {user.fullName}!</h2>
+                      <p className="mt-2 text-gray-500 dark:text-gray-400">Join a sponsor to start earning safety rewards.</p>
                   </div>
-
-                  <div className="border border-gray-200 dark:border-slate-700 rounded-lg p-6">
-                      <h3 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center">
-                          <Building className="w-5 h-5 mr-2" /> Apply to a Sponsor
-                      </h3>
-                      <form onSubmit={handleApply} className="space-y-4">
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Select Sponsor</label>
-                              <select
-                                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-slate-600 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md bg-white dark:bg-slate-700 dark:text-white border"
-                                  value={sponsorId}
-                                  onChange={(e) => setSponsorId(e.target.value)}
-                              >
-                                  {sponsors.map(s => (
-                                      <option key={s.id} value={s.id}>{s.name} (Ratio: {s.pointDollarRatio})</option>
-                                  ))}
-                              </select>
-                          </div>
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">CDL License Number</label>
-                              <input 
-                                  type="text" required 
-                                  className="mt-1 block w-full border border-gray-300 dark:border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-700 dark:text-white"
-                                  value={license}
-                                  onChange={(e) => setLicense(e.target.value)}
-                              />
-                          </div>
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Years of Experience</label>
-                              <input 
-                                  type="text" 
-                                  inputMode="numeric"
-                                  pattern="[0-9]*"
-                                  required 
-                                  className="mt-1 block w-full border border-gray-300 dark:border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-700 dark:text-white"
-                                  value={experience}
-                                  onChange={(e) => {
-                                      const val = e.target.value;
-                                      if (/^\d*$/.test(val)) setExperience(val);
-                                  }}
-                                  placeholder="e.g. 5"
-                              />
-                          </div>
-                           <div>
-                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Why do you want to join us?</label>
-                              <textarea 
-                                  required
-                                  rows={3}
-                                  className="mt-1 block w-full border border-gray-300 dark:border-slate-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-700 dark:text-white"
-                                  value={reason}
-                                  onChange={(e) => setReason(e.target.value)}
-                              />
-                          </div>
-                          <button 
-                            type="submit" 
-                            disabled={isSubmitting}
-                            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                          >
-                              {isSubmitting ? (
-                                <>
-                                  <Loader className="w-4 h-4 mr-2 animate-spin" /> Submitting...
-                                </>
-                              ) : 'Submit Application'}
-                          </button>
-                      </form>
-                  </div>
+                  <form onSubmit={handleApply} className="space-y-4">
+                        <div>
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Select Sponsor</label>
+                            <select className="w-full px-4 py-2 border border-gray-200 dark:border-slate-600 rounded-xl bg-gray-50 dark:bg-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500" value={sponsorId} onChange={(e) => setSponsorId(e.target.value)}>
+                                {sponsors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            </select>
+                        </div>
+                        <input type="text" required value={license} onChange={(e) => setLicense(e.target.value)} className="w-full px-4 py-2 border border-gray-200 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white" placeholder="CDL License #" />
+                        <input type="number" required value={experience} onChange={(e) => setExperience(e.target.value)} className="w-full px-4 py-2 border border-gray-200 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white" placeholder="Years Experience" />
+                        <textarea required value={reason} onChange={(e) => setReason(e.target.value)} className="w-full px-4 py-2 border border-gray-200 dark:border-slate-600 rounded-xl dark:bg-slate-700 dark:text-white" rows={3} placeholder="Why join us?" />
+                        <button type="submit" disabled={isSubmitting} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-blue-700 disabled:opacity-50 transition-all">
+                            {isSubmitting ? <Loader className="w-5 h-5 animate-spin mx-auto" /> : 'Submit Application'}
+                        </button>
+                  </form>
               </div>
           </div>
       );
   }
 
-  const isPending = !user.sponsorId && !!pendingApp;
-  const displaySponsorName = isPending 
-      ? sponsors.find(s => s.id === pendingApp?.sponsorId)?.name 
-      : activeSponsor?.name;
-
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
       <div className="flex border-b border-gray-200 dark:border-slate-700">
-          <button 
-            onClick={() => { setActiveTab('overview'); navigate('/dashboard'); }}
-            className={`px-6 py-3 text-sm font-bold uppercase tracking-wider border-b-2 transition-all ${activeTab === 'overview' ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
-          >
-              Overview
-          </button>
-          <button 
-            onClick={() => { setActiveTab('notifications'); navigate('/dashboard?tab=notifications'); }}
-            className={`px-6 py-3 text-sm font-bold uppercase tracking-wider border-b-2 transition-all flex items-center ${activeTab === 'notifications' ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
-          >
-              Notifications
-              {notifications.filter(n => !n.isRead).length > 0 && (
-                  <span className="ml-2 h-5 w-5 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full animate-pulse">
-                      {notifications.filter(n => !n.isRead).length}
-                  </span>
-              )}
-          </button>
+          <button onClick={() => { setActiveTab('overview'); navigate('/dashboard'); }} className={`px-6 py-3 text-sm font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === 'overview' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500'}`}>Overview</button>
+          <button onClick={() => { setActiveTab('notifications'); navigate('/dashboard?tab=notifications'); }} className={`px-6 py-3 text-sm font-black uppercase tracking-widest border-b-2 transition-all flex items-center ${activeTab === 'notifications' ? 'border-blue-600 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500'}`}>Notifications {notifications.filter(n => !n.isRead).length > 0 && <span className="ml-2 h-4 w-4 bg-red-500 text-white text-[8px] flex items-center justify-center rounded-full">{notifications.filter(n => !n.isRead).length}</span>}</button>
       </div>
 
       {activeTab === 'overview' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            {isPending && (
-                <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 p-4">
-                    <div className="flex">
-                        <div className="flex-shrink-0">
-                            <Clock className="h-5 w-5 text-yellow-400" aria-hidden="true" />
-                        </div>
-                        <div className="ml-3">
-                            <p className="text-sm text-yellow-700 dark:text-yellow-400">
-                                <span className="font-bold">Application Pending:</span> Waiting for acceptance from <span className="font-bold">{displaySponsorName}</span>. 
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {isPending && <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 p-4 rounded-xl flex items-center"><Clock className="h-5 w-5 text-yellow-400 mr-3" /><p className="text-sm font-bold text-yellow-700 dark:text-yellow-400">Application to {displaySponsorName} is currently pending review.</p></div>}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-2xl col-span-1 lg:col-span-2 border border-gray-100 dark:border-slate-700">
-                    <div className="p-6">
-                    <div className="flex items-center justify-between">
+                <div className="bg-white dark:bg-slate-800 shadow rounded-2xl p-6 border border-gray-100 dark:border-slate-700 lg:col-span-2">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
                         <div className="flex items-center">
-                            <div className="flex-shrink-0 bg-green-50 dark:bg-green-900/20 p-3 rounded-2xl">
-                                <ShieldCheck className="h-10 w-10 text-green-600 dark:text-green-400" aria-hidden="true" />
-                            </div>
-                            <div className="ml-5">
-                                <dl>
-                                    <dt className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
-                                        Current Balance
-                                    </dt>
-                                    <dd>
-                                        <div className="text-4xl font-black text-gray-900 dark:text-white flex items-center">
-                                            {isPending ? 'N/A' : (
-                                                showAsDollars ? (
-                                                    <>
-                                                        <DollarSign className="w-7 h-7 text-green-600 dark:text-green-400 mr-1" />
-                                                        {getPointsValueUSD().replace('$', '')}
-                                                    </>
-                                                ) : (
-                                                    user.pointsBalance?.toLocaleString() + ' pts'
-                                                )
-                                            )}
-                                        </div>
-                                    </dd>
-                                    <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-1">
-                                        Sponsor: <span className="font-bold text-gray-700 dark:text-gray-200">{displaySponsorName}</span> {isPending ? '(Pending)' : ''}
-                                    </dt>
-                                </dl>
+                            <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-2xl mr-5"><ShieldCheck className="h-10 w-10 text-green-600 dark:text-green-400" /></div>
+                            <div>
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Point Balance</h4>
+                                <div className="text-4xl font-black text-gray-900 dark:text-white flex items-center">
+                                    {isPending ? '---' : (showAsDollars ? <><DollarSign className="w-7 h-7 text-green-600 mr-1" />{getPointsValueUSD().replace('$', '')}</> : <>{user.pointsBalance?.toLocaleString()} <span className="text-sm text-gray-400 ml-1">PTS</span></>)}
+                                </div>
+                                <p className="text-xs font-bold text-gray-500 mt-1">Org: {displaySponsorName}</p>
                             </div>
                         </div>
-                        
-                        <div className="flex flex-col space-y-3 items-end">
-                            {!isPending && (
-                                <>
-                                    <button 
-                                        onClick={() => setShowAsDollars(!showAsDollars)}
-                                        className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-bold flex items-center bg-blue-50 dark:bg-blue-900/30 px-3 py-1.5 rounded-lg border border-blue-100 dark:border-blue-800 transition-all hover:shadow-sm"
-                                    >
-                                        <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-                                        {showAsDollars ? 'View Points' : 'View Dollars'}
-                                    </button>
-                                    <Link 
-                                        to="/catalog" 
-                                        className="inline-flex items-center px-6 py-2.5 border border-transparent text-sm font-black rounded-xl shadow-lg shadow-blue-100 dark:shadow-none text-white bg-blue-600 hover:bg-blue-700 transition-all active:scale-95"
-                                    >
-                                        Redeem Points
-                                    </Link>
-                                </>
-                            )}
-                        </div>
-                    </div>
+                        {!isPending && (
+                            <div className="flex flex-col sm:items-end gap-3">
+                                <button onClick={() => setShowAsDollars(!showAsDollars)} className="text-[10px] font-black uppercase bg-blue-50 dark:bg-blue-900/30 text-blue-600 px-4 py-2 rounded-xl border border-blue-100 dark:border-blue-800 transition-all hover:shadow-sm flex items-center"><RefreshCw className="w-3 h-3 mr-2" /> {showAsDollars ? 'View Points' : 'View Dollars'}</button>
+                                <Link to="/catalog" className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-200 dark:shadow-none hover:bg-blue-700 transition-all active:scale-95">Redeem Rewards</Link>
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 {!isPending && (
-                    <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-2xl border border-gray-100 dark:border-slate-700">
-                        <div className="px-6 py-5 flex items-center border-b border-gray-100 dark:border-slate-700">
-                            <Activity className="h-5 w-5 text-indigo-500 mr-2" />
-                            <h3 className="text-lg leading-6 font-bold text-gray-900 dark:text-white">Performance Insights</h3>
-                        </div>
-                        <div className="p-6 grid grid-cols-2 gap-4">
-                            <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800/50">
-                                <div className="text-[10px] font-black uppercase text-indigo-400 tracking-widest mb-1 flex items-center">
-                                    <BarChart3 className="w-3 h-3 mr-1" />
-                                    Avg Earned / Month
-                                </div>
-                                <div className="text-2xl font-black text-indigo-900 dark:text-indigo-100">
-                                    {stats.avgMonthly.toLocaleString()}
-                                </div>
-                            </div>
-                            <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800/50">
-                                <div className="text-[10px] font-black uppercase text-emerald-500 tracking-widest mb-1 flex items-center">
-                                    <Award className="w-3 h-3 mr-1" />
-                                    Total Earnings
-                                </div>
-                                <div className="text-2xl font-black text-emerald-900 dark:text-emerald-100">
-                                    {stats.totalEarned.toLocaleString()}
-                                </div>
-                            </div>
-                            <div className="col-span-2 text-center text-xs text-gray-400 mt-2">
-                                Based on {stats.uniqueMonths} month{stats.uniqueMonths !== 1 ? 's' : ''} of activity.
-                            </div>
+                    <div className="bg-white dark:bg-slate-800 shadow rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
+                        <div className="flex items-center mb-4"><Activity className="h-5 w-5 text-indigo-500 mr-2" /><h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest">Earnings Insights</h3></div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800/50"><div className="text-[9px] font-black uppercase text-indigo-400 tracking-widest mb-1">Avg / Month</div><div className="text-xl font-black text-indigo-900 dark:text-indigo-100">{stats.avgMonthly.toLocaleString()}</div></div>
+                            <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800/50"><div className="text-[9px] font-black uppercase text-emerald-500 tracking-widest mb-1">Total Career</div><div className="text-xl font-black text-emerald-900 dark:text-emerald-100">{stats.totalEarned.toLocaleString()}</div></div>
                         </div>
                     </div>
                 )}
-
+                
                 {!isPending && activeSponsor && (
-                    <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-2xl border border-gray-100 dark:border-slate-700">
-                        <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-700">
-                            <div className="flex items-center">
-                                <Info className="h-5 w-5 text-blue-500 mr-2" />
-                                <h3 className="text-lg leading-6 font-bold text-gray-900 dark:text-white">How to Earn Points</h3>
-                            </div>
-                        </div>
-                        <div className="px-6 py-6 prose prose-sm text-gray-500 dark:text-gray-400 h-full">
-                            {activeSponsor.incentiveRules && activeSponsor.incentiveRules.length > 0 ? (
-                                <ul className="space-y-3">
-                                    {activeSponsor.incentiveRules.map((rule, idx) => (
-                                        <li key={idx} className="flex items-start text-sm">
-                                            <div className="h-2 w-2 bg-blue-400 rounded-full mr-3 mt-1.5 flex-shrink-0"></div>
-                                            <span>{rule}</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <p className="italic">No specific rules listed by sponsor.</p>
-                            )}
-                        </div>
+                    <div className="bg-white dark:bg-slate-800 shadow rounded-2xl border border-gray-100 dark:border-slate-700 p-6">
+                        <div className="flex items-center mb-4"><Info className="h-5 w-5 text-blue-500 mr-2" /><h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest">Incentive Guide</h3></div>
+                        <ul className="space-y-2">
+                            {(activeSponsor.incentiveRules || []).map((r, i) => <li key={i} className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-start"><div className="h-1.5 w-1.5 rounded-full bg-blue-400 mr-2 mt-1 shrink-0" />{r}</li>)}
+                        </ul>
                     </div>
                 )}
             </div>
 
-            <div className="bg-white dark:bg-slate-800 shadow overflow-hidden sm:rounded-2xl border border-gray-100 dark:border-slate-700">
-                <div className="px-6 py-5 flex flex-col sm:flex-row justify-between items-center bg-gray-50 dark:bg-slate-700/30 border-b border-gray-100 dark:border-slate-700">
-                    <div>
-                        <h3 className="text-lg leading-6 font-bold text-gray-900 dark:text-white flex items-center">
-                            <Receipt className="w-5 h-5 mr-2 text-gray-400" />
-                            Recent Activity
-                        </h3>
-                    </div>
-                    {!isPending && (
-                        <div className="mt-4 sm:mt-0 flex items-center space-x-2">
-                            <button
-                                onClick={downloadHistoryCSV}
-                                className="flex items-center px-3 py-1.5 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 shadow-sm transition-colors mr-2"
-                                title="Download CSV"
-                            >
-                                <Download className="w-3.5 h-3.5 mr-1.5" />
-                                Export
-                            </button>
-                            <div className="flex items-center space-x-2">
-                                <Filter className="w-4 h-4 text-gray-400" />
-                                <select 
-                                    value={historyFilter} 
-                                    onChange={(e) => setHistoryFilter(e.target.value as any)}
-                                    className="text-xs font-bold border-gray-300 dark:border-slate-600 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white py-1 px-2"
-                                >
-                                    <option value="ALL">All Activity</option>
-                                    <option value="MANUAL">Awards Only</option>
-                                    <option value="PURCHASE">Redemptions</option>
-                                </select>
-                            </div>
-                        </div>
-                    )}
+            <div className="bg-white dark:bg-slate-800 shadow rounded-2xl border border-gray-100 dark:border-slate-700 overflow-hidden">
+                <div className="px-6 py-4 bg-gray-50 dark:bg-slate-700/30 flex items-center justify-between border-b border-gray-100 dark:border-slate-700">
+                    <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest flex items-center"><Receipt className="w-5 h-5 mr-2 text-gray-400" />Activity Ledger</h3>
+                    {!isPending && <div className="flex items-center gap-3"><button onClick={downloadHistoryCSV} className="text-[10px] font-black uppercase flex items-center px-3 py-1.5 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg text-gray-700 dark:text-white"><Download className="w-3.5 h-3.5 mr-1" /> Export</button><select value={historyFilter} onChange={(e) => setHistoryFilter(e.target.value as any)} className="text-[10px] font-black uppercase px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-white"><option value="ALL">All</option><option value="MANUAL">Awards</option><option value="PURCHASE">Rewards</option></select></div>}
                 </div>
                 <ul className="divide-y divide-gray-100 dark:divide-slate-700">
-                    {!isPending && filteredTransactions.map((t) => (
-                        <li key={t.id} className="px-6 py-4 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
-                            <div className="flex items-center justify-between">
-                                <div className="flex flex-col">
-                                    <div className="flex items-center">
-                                        <p className={`text-sm font-bold ${t.amount < 0 ? 'text-red-700 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
-                                            {t.reason}
-                                        </p>
-                                    </div>
-                                    <div className="flex flex-col mt-1">
-                                        <span className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">{t.sponsorName}</span>
-                                        {t.actorName && (
-                                            <span className="text-[9px] text-gray-400/80 dark:text-gray-500/80 font-medium">By: {t.actorName}</span>
-                                        )}
-                                    </div>
-                                    <div className="mt-1">
-                                        {t.type && (
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter
-                                                ${t.type === 'MANUAL' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 
-                                                t.type === 'PURCHASE' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>
-                                                {t.type}
-                                            </span>
-                                        )}
-                                    </div>
+                    {filteredTransactions.map(t => (
+                        <li key={t.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors">
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                    <p className={`text-sm font-bold truncate ${t.amount < 0 ? 'text-red-700 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>{t.reason}</p>
+                                    {t.status && t.status !== 'COMPLETED' && <span className="text-[8px] font-black uppercase px-1 rounded bg-amber-100 text-amber-700">{t.status.replace('_', ' ')}</span>}
                                 </div>
-                                <div className="flex flex-col items-end">
-                                    <div className={`flex items-center text-sm font-black ${t.amount > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                        {t.amount > 0 ? <TrendingUp className="w-4 h-4 mr-1"/> : <TrendingDown className="w-4 h-4 mr-1"/>}
-                                        {t.amount > 0 ? '+' : ''}{t.amount.toLocaleString()}
-                                    </div>
-                                    <div className="flex items-center text-[10px] text-gray-400 dark:text-gray-500 font-bold mt-1">
-                                        <Clock className="flex-shrink-0 mr-1 h-3 w-3" />
-                                        {t.date}
-                                    </div>
-                                </div>
+                                <p className="text-[9px] font-black uppercase text-gray-400 tracking-wider mt-0.5">{t.date} • {t.sponsorName}</p>
+                            </div>
+                            <div className="ml-4 flex flex-col items-end shrink-0">
+                                <div className={`text-sm font-black ${t.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>{t.amount > 0 ? '+' : ''}{t.amount.toLocaleString()}</div>
+                                <span className={`text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded mt-1 ${t.type === 'PURCHASE' ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'}`}>{t.type}</span>
                             </div>
                         </li>
                     ))}
-                    {(filteredTransactions.length === 0 || isPending) && (
-                        <li className="px-4 py-12 text-sm text-gray-400 text-center italic">
-                            No transactions recorded yet.
-                        </li>
-                    )}
+                    {filteredTransactions.length === 0 && <li className="p-12 text-center text-gray-400 italic text-sm">No activity recorded.</li>}
                 </ul>
             </div>
           </div>
       )}
 
-      {activeTab === 'notifications' && (activeSponsor || isPending) && (
+      {activeTab === 'notifications' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              {/* Preferences inside Notifications Tab */}
-              <div className="bg-white dark:bg-slate-800 shadow rounded-2xl overflow-hidden border border-blue-100 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
-                  <div className="px-6 py-4 flex items-center justify-between border-b border-blue-100/50 dark:border-blue-900/30">
-                      <div className="flex items-center">
-                          <Settings className="h-5 w-5 text-blue-500 mr-2" />
-                          <div>
-                              <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest">Notification Preferences</h3>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">Manage how you receive alerts.</p>
-                          </div>
-                      </div>
-                  </div>
-                  <div className="px-6 py-4 space-y-4">
-                      {/* Point Changes */}
-                      <div className="flex items-center justify-between">
-                          <div className="flex items-center">
-                              <TrendingUp className="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" />
-                              <span className="text-sm font-bold text-gray-700 dark:text-gray-200">Point Changes</span>
-                          </div>
-                          <button
-                              type="button"
-                              onClick={toggleAlerts}
-                              className={`${alertsEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'} relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
-                              role="switch"
-                              aria-checked={alertsEnabled}
-                          >
-                              <span aria-hidden="true" className={`${alertsEnabled ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200`} />
-                          </button>
-                      </div>
-
-                      {/* Order Confirmations */}
-                      <div className="flex items-center justify-between">
-                          <div className="flex items-center">
-                              <Receipt className="w-4 h-4 text-green-600 dark:text-green-400 mr-2" />
-                              <span className="text-sm font-bold text-gray-700 dark:text-gray-200">Order Confirmations</span>
-                          </div>
-                          <button
-                              type="button"
-                              onClick={toggleOrderAlerts}
-                              className={`${orderAlertsEnabled ? 'bg-green-600' : 'bg-gray-300 dark:bg-gray-600'} relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
-                              role="switch"
-                              aria-checked={orderAlertsEnabled}
-                          >
-                              <span aria-hidden="true" className={`${orderAlertsEnabled ? 'translate-x-5' : 'translate-x-0'} pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200`} />
-                          </button>
-                      </div>
-                  </div>
+              <div className="bg-blue-50/30 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900 rounded-2xl p-6">
+                <div className="flex items-center justify-between mb-4"><div className="flex items-center"><Settings className="h-5 w-5 text-blue-500 mr-2" /><div><h3 className="text-sm font-black dark:text-white uppercase tracking-widest">Alert Settings</h3><p className="text-xs text-gray-500">How you receive updates.</p></div></div></div>
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between"><div className="flex items-center"><TrendingUp className="w-4 h-4 text-blue-600 mr-2" /><span className="text-xs font-bold dark:text-gray-200">Point Changes</span></div><button onClick={toggleAlerts} className={`${alertsEnabled ? 'bg-blue-600' : 'bg-gray-300'} relative inline-flex h-5 w-10 items-center rounded-full transition-colors`}><span className={`${alertsEnabled ? 'translate-x-5' : 'translate-x-1'} h-3 w-3 rounded-full bg-white transition-transform`} /></button></div>
+                    <div className="flex items-center justify-between"><div className="flex items-center"><Receipt className="w-4 h-4 text-green-600 mr-2" /><span className="text-xs font-bold dark:text-gray-200">Order Alerts</span></div><button onClick={toggleOrderAlerts} className={`${orderAlertsEnabled ? 'bg-green-600' : 'bg-gray-300'} relative inline-flex h-5 w-10 items-center rounded-full transition-colors`}><span className={`${orderAlertsEnabled ? 'translate-x-5' : 'translate-x-1'} h-3 w-3 rounded-full bg-white transition-transform`} /></button></div>
+                </div>
               </div>
-
-              <div className="bg-white dark:bg-slate-800 shadow rounded-2xl overflow-hidden border border-gray-100 dark:border-slate-700">
-                  <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-700/30 flex items-center justify-between">
-                      <div className="flex items-center text-gray-700 dark:text-gray-300 font-bold uppercase tracking-widest text-xs">
-                          <Inbox className="w-4 h-4 mr-2 text-blue-500" />
-                          Message Inbox
-                      </div>
-                      <span className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase">{notifications.length} Total</span>
-                  </div>
-                  
-                  <div className="divide-y divide-gray-100 dark:divide-slate-700">
-                      {notifications.map((n) => (
-                          <div 
-                            key={n.id} 
-                            onClick={() => !n.isRead && handleReadNotification(n.id)}
-                            className={`p-6 transition-colors cursor-pointer group hover:bg-gray-50 dark:hover:bg-slate-700/50 ${n.isRead ? 'opacity-80' : 'bg-white dark:bg-slate-800 border-l-4 border-blue-500 shadow-sm'}`}
-                          >
-                              <div className="flex justify-between items-start mb-2">
-                                  <div className="flex items-center">
-                                      {n.type === 'ORDER_CONFIRMATION' ? (
-                                          <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded-lg mr-3">
-                                              <Receipt className="w-4 h-4 text-green-600 dark:text-green-400" />
-                                          </div>
-                                      ) : n.type === 'POINT_CHANGE' ? (
-                                          <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg mr-3">
-                                              <TrendingUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                                          </div>
-                                      ) : (
-                                          <div className="bg-gray-100 dark:bg-gray-700 p-2 rounded-lg mr-3">
-                                              <Bell className="w-4 h-4 text-gray-600 dark:text-gray-300" />
-                                          </div>
-                                      )}
-                                      <div>
-                                          <h4 className={`text-sm font-bold ${n.isRead ? 'text-gray-700 dark:text-gray-400' : 'text-gray-900 dark:text-white'}`}>{n.title}</h4>
-                                          <div className="flex items-center text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider mt-0.5">
-                                              <Calendar className="w-3 h-3 mr-1" />
-                                              {new Date(n.date).toLocaleString()}
-                                          </div>
-                                      </div>
-                                  </div>
-                                  {!n.isRead && (
-                                      <span className="h-2 w-2 rounded-full bg-blue-600 shadow-sm shadow-blue-200"></span>
-                                  )}
-                              </div>
-                              <p className="text-sm text-gray-600 dark:text-gray-300 ml-12">{n.message}</p>
-                              
-                              {n.type === 'POINT_CHANGE' && n.metadata?.amount < 0 && (
-                                  <div className="ml-12 mt-3 bg-red-50 dark:bg-red-900/10 border-l-4 border-red-500 p-3 rounded-r-lg">
-                                      <h5 className="text-xs font-bold text-red-800 dark:text-red-300 uppercase tracking-widest mb-1">
-                                          Explanation
-                                      </h5>
-                                      <p className="text-sm text-red-700 dark:text-red-200 font-medium">
-                                          {n.metadata.reason}
-                                      </p>
-                                      {n.metadata.actorName && (
-                                           <p className="text-[10px] text-red-500 dark:text-red-400 mt-1">
-                                              Authorized by: {n.metadata.actorName}
-                                           </p>
-                                      )}
-                                  </div>
-                              )}
-
-                              {n.type === 'ORDER_CONFIRMATION' && n.metadata?.orderSummary && (
-                                  <div className="ml-12 mt-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl border border-gray-100 dark:border-slate-600 p-4">
-                                      <div className="flex items-center mb-3 text-xs font-bold text-gray-400 uppercase tracking-widest">
-                                          <Package className="w-3 h-3 mr-1.5" />
-                                          Order Snapshot
-                                      </div>
-                                      <div className="space-y-2">
-                                          {n.metadata.orderSummary.items.map((item: CartItem, i: number) => (
-                                              <div key={i} className="flex justify-between text-xs">
-                                                  <span className="text-gray-600 dark:text-gray-300">
-                                                      <span className="font-bold text-gray-900 dark:text-white">{item.quantity}x</span> {item.name}
-                                                  </span>
-                                                  <span className="font-mono text-gray-400">{(item.pricePoints * item.quantity).toLocaleString()} pts</span>
-                                              </div>
-                                          ))}
-                                          <div className="pt-2 border-t border-gray-200 dark:border-slate-600 flex justify-between items-center">
-                                              <span className="text-xs font-bold text-gray-900 dark:text-white">Total Points Spent</span>
-                                              <span className="text-sm font-black text-green-600 dark:text-green-400">{n.metadata.orderSummary.total.toLocaleString()} PTS</span>
-                                          </div>
-                                      </div>
-                                  </div>
-                              )}
-                          </div>
-                      ))}
-                      {notifications.length === 0 && (
-                          <div className="p-20 text-center text-gray-400 dark:text-gray-500">
-                              <Inbox className="w-16 h-16 mx-auto mb-4 opacity-10" />
-                              <p className="text-lg font-black uppercase tracking-widest">All caught up!</p>
-                              <p className="text-sm">You have no notifications at this time.</p>
-                          </div>
-                      )}
-                  </div>
+              <div className="bg-white dark:bg-slate-800 shadow rounded-2xl border border-gray-100 dark:border-slate-700 overflow-hidden divide-y divide-gray-100 dark:divide-slate-700">
+                {notifications.map(n => (
+                    <div key={n.id} onClick={() => !n.isRead && handleReadNotification(n.id)} className={`p-6 flex items-start cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors ${!n.isRead ? 'bg-white border-l-4 border-blue-500' : 'opacity-70'}`}>
+                        <div className={`p-2 rounded-xl mr-4 ${n.type === 'POINT_CHANGE' ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-600'}`}><Bell className="w-5 h-5" /></div>
+                        <div className="flex-1 min-w-0">
+                            <h5 className="text-sm font-bold text-gray-900 dark:text-white flex items-center justify-between">{n.title} {!n.isRead && <span className="h-2 w-2 bg-blue-500 rounded-full" />}</h5>
+                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{n.message}</p>
+                            <span className="text-[9px] font-black uppercase text-gray-400 mt-2 block">{new Date(n.date).toLocaleString()}</span>
+                        </div>
+                    </div>
+                ))}
+                {notifications.length === 0 && <div className="p-20 text-center text-gray-400 italic">No notifications yet.</div>}
               </div>
           </div>
       )}
@@ -665,19 +315,38 @@ const DriverDashboard: React.FC<DashboardProps> = ({ user, onUpdateUser }) => {
   );
 };
 
-const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
+const SponsorDashboard: React.FC<DashboardProps> = ({ user }) => {
     const [sponsorOrg, setSponsorOrg] = useState<SponsorOrganization | undefined>(undefined);
     const [newRule, setNewRule] = useState('');
     const [loading, setLoading] = useState(true);
+    const [pendingRefunds, setPendingRefunds] = useState<PointTransaction[]>([]);
+    const [processingId, setProcessingId] = useState<string | null>(null);
+
+    const loadData = useCallback(async () => {
+        setLoading(true);
+        const [sp, txs] = await Promise.all([getSponsors(), getTransactions()]);
+        setSponsorOrg(sp.find(s => s.id === user.sponsorId));
+        setPendingRefunds(txs.filter(t => t.status === 'REFUND_PENDING' && t.sponsorName === sp.find(s => s.id === user.sponsorId)?.name));
+        setLoading(false);
+    }, [user.sponsorId]);
 
     useEffect(() => {
-        const load = async () => {
-             const sp = await getSponsors();
-             setSponsorOrg(sp.find(s => s.id === 's1')); 
-             setLoading(false);
-        };
-        load();
-    }, []);
+        loadData();
+    }, [loadData]);
+
+    const handleRefundAction = async (txId: string, approved: boolean) => {
+        setProcessingId(txId);
+        try {
+            const success = await handleRefund(txId, approved, user.fullName);
+            if (success) {
+                await loadData();
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setProcessingId(null);
+        }
+    };
 
     const handleAddRule = async () => {
         if (!sponsorOrg || !newRule.trim()) return;
@@ -696,67 +365,88 @@ const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
     };
 
     return (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-             <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
-                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Sponsor Overview: {user.fullName}</h2>
+        <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+             <div className="bg-white dark:bg-slate-800 shadow rounded-2xl p-8 border border-gray-100 dark:border-slate-700">
+                 <h2 className="text-2xl font-black dark:text-white uppercase tracking-tighter mb-6">Org Overview: {sponsorOrg?.name || user.fullName}</h2>
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                     <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900">
-                         <h3 className="text-blue-800 dark:text-blue-300 font-semibold">Active Drivers</h3>
-                         <p className="text-3xl font-bold text-blue-900 dark:text-blue-100 mt-2">124</p>
-                     </div>
-                     <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-100 dark:border-green-900">
-                         <h3 className="text-green-800 dark:text-green-300 font-semibold">Pending Applications</h3>
-                         <p className="text-3xl font-bold text-green-900 dark:text-green-100 mt-2">3</p>
-                     </div>
-                     <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg border border-purple-100 dark:border-purple-900">
-                         <h3 className="text-purple-800 dark:text-purple-300 font-semibold">Points Awarded (Month)</h3>
-                         <p className="text-3xl font-bold text-purple-900 dark:text-purple-100 mt-2">45,000</p>
-                     </div>
+                     <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-2xl border border-blue-100 dark:border-blue-900"><h3 className="text-[10px] font-black uppercase text-blue-800 dark:text-blue-300 tracking-widest mb-2">Fleet Drivers</h3><p className="text-3xl font-black text-blue-900 dark:text-blue-100">124</p></div>
+                     <div className="bg-green-50 dark:bg-green-900/20 p-6 rounded-2xl border border-green-100 dark:border-green-900"><h3 className="text-[10px] font-black uppercase text-green-800 dark:text-green-300 tracking-widest mb-2">Queue (Apps)</h3><p className="text-3xl font-black text-green-900 dark:text-green-100">3</p></div>
+                     <div className="bg-purple-50 dark:bg-purple-900/20 p-6 rounded-2xl border border-purple-100 dark:border-purple-900"><h3 className="text-[10px] font-black uppercase text-purple-800 dark:text-purple-300 tracking-widest mb-2">Month Issuance</h3><p className="text-3xl font-black text-purple-900 dark:text-purple-100">45k</p></div>
                  </div>
              </div>
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div className="bg-white dark:bg-slate-800 shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
-                     <h3 className="text-lg font-medium mb-4 text-gray-900 dark:text-white">Quick Actions</h3>
-                     <div className="flex flex-col space-y-3">
-                         <Link to="/sponsor/applications" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center flex justify-center items-center">
-                            Review Applications
-                         </Link>
-                         <Link to="/sponsor/points" className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-white px-4 py-2 rounded hover:bg-gray-50 dark:hover:bg-slate-600 text-center flex justify-center items-center">
-                            Manage Driver Points
-                         </Link>
-                         <Link to="/sponsor/catalog" className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-white px-4 py-2 rounded hover:bg-gray-50 dark:hover:bg-slate-600 text-center flex justify-center items-center">
-                            Edit Product Catalog
-                         </Link>
+                 {/* Action Panel */}
+                 <div className="space-y-6">
+                     <div className="bg-white dark:bg-slate-800 shadow rounded-2xl p-6 border border-gray-100 dark:border-slate-700">
+                         <h3 className="text-sm font-black dark:text-white uppercase tracking-widest mb-4">Operations</h3>
+                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                             <Link to="/sponsor/drivers" className="py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-blue-700 text-center transition-all flex items-center justify-center">
+                                <Users className="w-4 h-4 mr-2" /> Manage Fleet
+                             </Link>
+                             <Link to="/sponsor/applications" className="py-3 bg-gray-900 dark:bg-slate-700 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-black text-center transition-all">Review Apps</Link>
+                             <Link to="/sponsor/points" className="py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 text-center transition-all">Grant Points</Link>
+                         </div>
+                     </div>
+
+                     <div className="bg-white dark:bg-slate-800 shadow rounded-2xl p-6 border border-gray-100 dark:border-slate-700">
+                         <h3 className="text-sm font-black dark:text-white uppercase tracking-widest mb-4 flex items-center"><Undo2 className="w-4 h-4 mr-2 text-blue-500" /> Pending Refunds</h3>
+                         <div className="space-y-4">
+                            {pendingRefunds.length === 0 ? (
+                                <p className="text-xs text-gray-400 italic">No refund requests in queue.</p>
+                            ) : (
+                                pendingRefunds.map(tx => {
+                                    const isCurrentProcessing = processingId === tx.id;
+                                    return (
+                                        <div key={tx.id} className="p-4 bg-gray-50 dark:bg-slate-700/50 rounded-xl border border-gray-100 dark:border-slate-600 animate-in fade-in slide-in-from-right-2">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div>
+                                                    <p className="text-xs font-black dark:text-white">Request from {tx.driverName}</p>
+                                                    <p className="text-[10px] text-gray-500 mt-0.5">Tx: {tx.id}</p>
+                                                </div>
+                                                <span className="text-xs font-black text-blue-600 dark:text-blue-400">{Math.abs(tx.amount).toLocaleString()} PTS</span>
+                                            </div>
+                                            <div className="bg-white dark:bg-slate-800 p-2 rounded-lg text-[10px] text-gray-600 dark:text-gray-300 italic mb-3">"{tx.refundReason}"</div>
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    disabled={!!processingId}
+                                                    onClick={() => handleRefundAction(tx.id, true)} 
+                                                    className="flex-1 py-2 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-1.5 hover:bg-green-700 transition-all active:scale-95 disabled:opacity-50"
+                                                >
+                                                    {isCurrentProcessing ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <><Check className="w-3.5 h-3.5" /> Approve</>}
+                                                </button>
+                                                <button 
+                                                    disabled={!!processingId}
+                                                    onClick={() => handleRefundAction(tx.id, false)} 
+                                                    className="flex-1 py-2 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-1.5 hover:bg-red-50 hover:text-red-600 transition-all active:scale-95 disabled:opacity-50"
+                                                >
+                                                    {isCurrentProcessing ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <><X className="w-3.5 h-3.5" /> Deny</>}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                         </div>
                      </div>
                  </div>
-                 
-                 <div className="bg-white dark:bg-slate-800 shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
-                     <h3 className="text-lg font-medium mb-4 text-gray-900 dark:text-white">Incentive Rules</h3>
+
+                 {/* Incentive Rules */}
+                 <div className="bg-white dark:bg-slate-800 shadow rounded-2xl p-6 border border-gray-100 dark:border-slate-700">
+                     <h3 className="text-sm font-black dark:text-white uppercase tracking-widest mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-amber-500" /> Active Rewards Logic</h3>
                      <div className="space-y-4">
-                         <div className="flex space-x-2">
-                             <input 
-                                type="text" 
-                                value={newRule} 
-                                onChange={e => setNewRule(e.target.value)}
-                                placeholder="e.g. 50 pts for safe trip"
-                                className="flex-1 border border-gray-300 dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 dark:text-white"
-                             />
-                             <button onClick={handleAddRule} className="bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700">Add</button>
+                         <div className="flex gap-2">
+                             <input type="text" value={newRule} onChange={e => setNewRule(e.target.value)} placeholder="Rule description..." className="flex-1 border border-gray-200 dark:border-slate-600 rounded-xl px-3 py-2 text-xs bg-gray-50 dark:bg-slate-700 dark:text-white outline-none" />
+                             <button onClick={handleAddRule} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest">Add</button>
                          </div>
-                         <ul className="space-y-2 max-h-48 overflow-y-auto">
-                             {sponsorOrg?.incentiveRules?.map((rule, i) => (
-                                 <li key={i} className="flex justify-between items-center bg-gray-50 dark:bg-slate-700 p-2 rounded text-sm text-gray-800 dark:text-gray-200">
-                                     <span>{rule}</span>
-                                     <button onClick={() => handleRemoveRule(i)} className="text-red-500 hover:text-red-700 ml-2">
-                                         <X className="w-4 h-4" />
-                                     </button>
-                                 </li>
+                         <div className="max-h-60 overflow-y-auto pr-2 space-y-2">
+                             {(sponsorOrg?.incentiveRules || []).map((rule, i) => (
+                                 <div key={i} className="flex justify-between items-center bg-gray-50 dark:bg-slate-700/50 p-3 rounded-xl group border border-transparent hover:border-gray-200 transition-all">
+                                     <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{rule}</span>
+                                     <button onClick={() => handleRemoveRule(i)} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-4 h-4" /></button>
+                                 </div>
                              ))}
-                             {(!sponsorOrg?.incentiveRules || sponsorOrg.incentiveRules.length === 0) && (
-                                 <li className="text-gray-400 italic text-sm">No rules defined. Drivers won't see how to earn points.</li>
-                             )}
-                         </ul>
+                         </div>
                      </div>
                  </div>
              </div>
@@ -764,7 +454,7 @@ const SponsorDashboard: React.FC<{ user: User }> = ({ user }) => {
     );
 };
 
-const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
+const AdminDashboard: React.FC<DashboardProps> = ({ user }) => {
     const [config, setConfig] = useState(getConfig());
     const [archiving, setArchiving] = useState(false);
     const [stats, setStats] = useState({ sponsors: 0, users: 0, drivers: 0 });
@@ -778,15 +468,8 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
 
     useEffect(() => {
         const loadStats = async () => {
-            const [allUsers, allSponsors] = await Promise.all([
-                getAllUsers(),
-                getSponsors()
-            ]);
-            setStats({
-                users: allUsers.length,
-                drivers: allUsers.filter(u => u.role === UserRole.DRIVER).length,
-                sponsors: allSponsors.length
-            });
+            const [allUsers, allSponsors] = await Promise.all([getAllUsers(), getSponsors()]);
+            setStats({ users: allUsers.length, drivers: allUsers.filter(u => u.role === UserRole.DRIVER).length, sponsors: allSponsors.length });
             setLoading(false);
         };
         loadStats();
@@ -797,140 +480,43 @@ const AdminDashboard: React.FC<{ user: User }> = ({ user }) => {
         updateConfig({ [key]: newVal });
     };
 
-    const isMasterTestMode = config.useMockAuth || config.useMockDB || config.useMockRedshift;
-
     const toggleMaster = () => {
-        const newState = !isMasterTestMode;
-        updateConfig({
-            useMockAuth: newState,
-            useMockDB: newState,
-            useMockRedshift: newState
-        });
+        const active = config.useMockAuth || config.useMockDB || config.useMockRedshift;
+        updateConfig({ useMockAuth: !active, useMockDB: !active, useMockRedshift: !active });
     };
 
     const handleArchive = async () => {
         setArchiving(true);
-        const success = await triggerRedshiftArchive();
-        if(success) alert("Redshift Archive Triggered Successfully");
-        else alert("Failed to trigger Redshift Archive");
+        if(await triggerRedshiftArchive()) alert("Archive Triggered");
         setArchiving(false);
     };
 
     return (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-            <div className="bg-white dark:bg-slate-800 overflow-hidden shadow rounded-lg p-6 border border-gray-100 dark:border-slate-700">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">System Administration</h2>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                     <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-lg border border-indigo-100 dark:border-indigo-900">
-                         <h3 className="text-indigo-800 dark:text-indigo-300 font-semibold flex items-center">
-                            <Building className="w-4 h-4 mr-2" /> Total Sponsors
-                         </h3>
-                         <p className="text-3xl font-bold text-indigo-900 dark:text-indigo-100 mt-2">
-                            {loading ? <Loader className="w-6 h-6 animate-spin"/> : stats.sponsors}
-                         </p>
-                     </div>
-                     <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-900">
-                         <h3 className="text-blue-800 dark:text-blue-300 font-semibold flex items-center">
-                            <Truck className="w-4 h-4 mr-2" /> Active Drivers
-                         </h3>
-                         <p className="text-3xl font-bold text-blue-900 dark:text-blue-100 mt-2">
-                            {loading ? <Loader className="w-6 h-6 animate-spin"/> : stats.drivers}
-                         </p>
-                     </div>
-                     <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg border border-purple-100 dark:border-purple-900">
-                         <h3 className="text-purple-800 dark:text-purple-300 font-semibold flex items-center">
-                            <UserIcon className="w-4 h-4 mr-2" /> Total Users
-                         </h3>
-                         <p className="text-3xl font-bold text-purple-900 dark:text-purple-100 mt-2">
-                            {loading ? <Loader className="w-6 h-6 animate-spin"/> : stats.users}
-                         </p>
-                     </div>
+        <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+            <div className="bg-white dark:bg-slate-800 shadow rounded-2xl p-8 border border-gray-100 dark:border-slate-700">
+                <h2 className="text-2xl font-black dark:text-white uppercase tracking-tighter mb-8">System Control Panel</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                     <div className="bg-indigo-50 dark:bg-indigo-900/20 p-6 rounded-2xl border border-indigo-100 dark:border-indigo-900"><h3 className="text-[10px] font-black uppercase text-indigo-400 tracking-widest mb-1 flex items-center"><Building className="w-3 h-3 mr-1" /> Sponsors</h3><p className="text-3xl font-black text-indigo-900 dark:text-indigo-100">{loading ? '---' : stats.sponsors}</p></div>
+                     <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-2xl border border-blue-100 dark:border-blue-900"><h3 className="text-[10px] font-black uppercase text-blue-500 tracking-widest mb-1 flex items-center"><Truck className="w-3 h-3 mr-1" /> Active Fleet</h3><p className="text-3xl font-black text-blue-900 dark:text-blue-100">{loading ? '---' : stats.drivers}</p></div>
+                     <div className="bg-purple-50 dark:bg-purple-900/20 p-6 rounded-2xl border border-purple-100 dark:border-purple-900"><h3 className="text-[10px] font-black uppercase text-purple-500 tracking-widest mb-1 flex items-center"><UserIcon className="w-3 h-3 mr-1" /> Registered Users</h3><p className="text-3xl font-black text-purple-900 dark:text-purple-100">{loading ? '---' : stats.users}</p></div>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                     <Link to="/admin/sponsors" className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-xl border border-blue-100 dark:border-blue-800 hover:shadow-md transition-shadow">
-                        <Building className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-3" />
-                        <h3 className="font-bold text-gray-900 dark:text-white">Manage Sponsors</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Create and edit sponsor organizations.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                     <Link to="/admin/sponsors" className="p-6 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-transparent hover:border-blue-500 transition-all">
+                        <Building className="w-8 h-8 text-blue-600 mb-3" /><h3 className="font-bold dark:text-white">Partners</h3><p className="text-xs text-gray-500 mt-1">Configure org relationships.</p>
                      </Link>
-
-                     <Link to="/admin/users" className="bg-purple-50 dark:bg-purple-900/20 p-6 rounded-xl border border-purple-100 dark:border-purple-800 hover:shadow-md transition-shadow">
-                        <UserIcon className="w-8 h-8 text-purple-600 dark:text-purple-400 mb-3" />
-                        <h3 className="font-bold text-gray-900 dark:text-white">User Management</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">View users, reset passwords, manage roles.</p>
+                     <Link to="/admin/users" className="p-6 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-transparent hover:border-purple-500 transition-all">
+                        <UserIcon className="w-8 h-8 text-purple-600 mb-3" /><h3 className="font-bold dark:text-white">User Mgmt</h3><p className="text-xs text-gray-500 mt-1">Security, bans, role overrides.</p>
                      </Link>
-
-                     <Link to="/admin/settings" className="bg-orange-50 dark:bg-orange-900/20 p-6 rounded-xl border border-orange-100 dark:border-orange-800 hover:shadow-md transition-shadow">
-                        <Globe className="w-8 h-8 text-orange-600 dark:text-orange-400 mb-3" />
-                        <h3 className="font-bold text-gray-900 dark:text-white">Global Settings</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">System-wide configuration and rules.</p>
-                     </Link>
-
-                     <div className="bg-gray-50 dark:bg-slate-700/50 p-6 rounded-xl border border-gray-200 dark:border-slate-600">
-                        <Server className="w-8 h-8 text-gray-600 dark:text-gray-400 mb-3" />
-                        <h3 className="font-bold text-gray-900 dark:text-white">System Status</h3>
-                        <p className="text-sm text-green-600 dark:text-green-400 mt-1 font-bold flex items-center"><CheckCircle className="w-3 h-3 mr-1"/> Operational</p>
+                     <div className="p-6 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-transparent flex flex-col justify-between">
+                        <h3 className="font-bold dark:text-white flex items-center"><Activity className="w-4 h-4 mr-2" /> ETL Jobs</h3>
+                        <button onClick={handleArchive} disabled={archiving} className="mt-4 w-full py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest disabled:opacity-50 transition-all">{archiving ? <Loader className="w-4 h-4 animate-spin mx-auto"/> : 'Archive Redshift'}</button>
                      </div>
-                </div>
-
-                <div className="border-t border-gray-100 dark:border-slate-700 pt-6">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-                        <Database className="w-5 h-5 mr-2" /> Data Operations
-                    </h3>
-                    <div className="flex flex-wrap gap-4">
-                        <button 
-                            onClick={handleArchive}
-                            disabled={archiving}
-                            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                        >
-                            {archiving ? <Loader className="w-4 h-4 mr-2 animate-spin"/> : <Database className="w-4 h-4 mr-2"/>}
-                            Trigger Redshift Archive
-                        </button>
-                    </div>
                 </div>
             </div>
 
-            {/* Developer Control Panel */}
-            <div className="bg-white dark:bg-slate-800 shadow-xl rounded-2xl p-8 border border-gray-100 dark:border-slate-700 relative overflow-hidden">
-                 <div className="flex items-center justify-between mb-8">
-                    <div>
-                        <h3 className="text-xl font-black flex items-center text-gray-900 dark:text-white">
-                            <Activity className="w-6 h-6 mr-2 text-indigo-500" /> Developer Control Panel
-                        </h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Manage real-time service connections and system state.</p>
-                    </div>
-                    <button 
-                        onClick={toggleMaster}
-                        className={`flex items-center px-6 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${isMasterTestMode ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-green-600 text-white hover:bg-green-700'}`}
-                    >
-                        <Power className="w-4 h-4 mr-2" /> {isMasterTestMode ? 'Enable Prod' : 'Enable Mock'}
-                    </button>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                     <div className="border border-gray-200 dark:border-slate-700 rounded-2xl p-6 bg-gray-50 dark:bg-slate-900/50">
-                         <div className="flex justify-between items-center mb-4">
-                             <h4 className="font-bold text-gray-700 dark:text-gray-200 text-sm">Auth Source</h4>
-                             <StatusBadge active={config.useMockAuth} mockName="Local" realName="Firebase" />
-                         </div>
-                         <button onClick={() => toggleService('useMockAuth')} className="w-full py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg text-xs font-bold hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-200 transition-colors">Toggle Auth</button>
-                     </div>
-                     <div className="border border-gray-200 dark:border-slate-700 rounded-2xl p-6 bg-gray-50 dark:bg-slate-900/50">
-                         <div className="flex justify-between items-center mb-4">
-                             <h4 className="font-bold text-gray-700 dark:text-gray-200 text-sm">DB Source</h4>
-                             <StatusBadge active={config.useMockDB} mockName="Local" realName="AWS RDS" />
-                         </div>
-                         <button onClick={() => toggleService('useMockDB')} className="w-full py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg text-xs font-bold hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-200 transition-colors">Toggle DB</button>
-                     </div>
-                     <div className="border border-gray-200 dark:border-slate-700 rounded-2xl p-6 bg-gray-50 dark:bg-slate-900/50">
-                         <div className="flex justify-between items-center mb-4">
-                             <h4 className="font-bold text-gray-700 dark:text-gray-200 text-sm">ETL Pipeline</h4>
-                             <StatusBadge active={config.useMockRedshift} mockName="Mock" realName="Glue" />
-                         </div>
-                         <button onClick={() => toggleService('useMockRedshift')} className="w-full py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg text-xs font-bold hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-200 transition-colors">Toggle ETL</button>
-                     </div>
-                 </div>
+            <div className="bg-white dark:bg-slate-800 shadow rounded-2xl p-8 border border-gray-100 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-6">
+                 <div><h3 className="text-xl font-black dark:text-white flex items-center"><Power className="w-6 h-6 mr-2 text-red-500" /> Developer Master Override</h3><p className="text-sm text-gray-500">Instantly switch between Simulated Mock and Live AWS APIs.</p></div>
+                 <button onClick={toggleMaster} className={`px-10 py-3 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-lg ${isTestMode() ? 'bg-red-600 text-white shadow-red-200' : 'bg-green-600 text-white shadow-green-200'}`}>{isTestMode() ? 'ENABLE LIVE PROD' : 'SWITCH TO LOCAL MOCK'}</button>
             </div>
         </div>
     );

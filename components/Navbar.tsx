@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { User, UserRole } from '../types';
-import { Truck, LogOut, LayoutDashboard, ShoppingBag, FileBarChart, Info, Menu, X, Bell, Settings, MessageSquare } from 'lucide-react';
+import { Truck, LogOut, LayoutDashboard, ShoppingBag, FileBarChart, Info, Menu, X, Bell, Settings, MessageSquare, Users } from 'lucide-react';
 import { getNotifications } from '../services/mockData';
 import { SettingsModal } from './SettingsModal';
 
@@ -38,9 +38,8 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, isDark, toggleTh
   }, [user]);
 
   const handleLogout = () => {
-      onLogout(); // This triggers the App state update
+      onLogout();
       setIsMobileMenuOpen(false);
-      // Removed programmatic navigate('/login') - App.tsx declarative routes handle this
   };
 
   const isActive = (path: string, exact = true) => {
@@ -89,6 +88,13 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, isDark, toggleTh
                           {unreadCount}
                       </span>
                   )}
+                </Link>
+              )}
+
+              {user?.role === UserRole.SPONSOR && (
+                <Link to="/sponsor/drivers" className={`inline-flex items-center px-1 pt-1 text-sm font-bold uppercase tracking-widest transition-all ${isActive('/sponsor/drivers')}`}>
+                  <Users className="w-4 h-4 mr-2" />
+                  Drivers
                 </Link>
               )}
 
@@ -188,6 +194,11 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onLogout, isDark, toggleTh
                       <Link to="/dashboard?tab=notifications" onClick={() => setIsMobileMenuOpen(false)} className={`block pl-3 pr-4 py-2 border-l-4 text-base font-medium flex items-center ${location.search.includes('tab=notifications') ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
                         Notifications
                         {unreadCount > 0 && <span className="ml-2 bg-red-500 text-white text-[10px] px-2 rounded-full">{unreadCount}</span>}
+                      </Link>
+                    )}
+                    {user.role === UserRole.SPONSOR && (
+                      <Link to="/sponsor/drivers" onClick={() => setIsMobileMenuOpen(false)} className={`block pl-3 pr-4 py-2 border-l-4 text-base font-medium ${isMobileActive('/sponsor/drivers')}`}>
+                        Drivers
                       </Link>
                     )}
                     {(user.role === UserRole.DRIVER || user.role === UserRole.SPONSOR) && (

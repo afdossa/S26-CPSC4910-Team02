@@ -4,13 +4,6 @@ import { AWS_API_CONFIG, getConfig } from './config';
 
 /**
  * AWS / MySQL SERVICE LAYER
- * 
- * This file normally connects to AWS Lambda/RDS.
- * 
- * FOR DEMO PURPOSES: 
- * We implement a "Pseudo-Remote" database here using a different LocalStorage key ('gdip_aws_prod_v1').
- * This allows "Production Mode" (Firebase Auth + Database) to function within this browser demo
- * without actually deploying the backend code to AWS.
  */
 
 const PROD_DB_KEY = 'gdip_aws_prod_v1';
@@ -28,30 +21,16 @@ interface ProdDB {
 const loadProdDB = (): ProdDB => {
     const stored = localStorage.getItem(PROD_DB_KEY);
     if (stored) return JSON.parse(stored);
-    
-    // Initial Seed for "Production" so it's not empty
     return {
         users: [],
         sponsors: [
-            { 
-                id: 's1', 
-                name: 'FastLane Logistics', 
-                pointDollarRatio: 0.01, 
-                pointsFloor: 0,
-                incentiveRules: ["100 pts: Clean roadside inspection"] 
-            },
-            { 
-                id: 's2', 
-                name: 'Global Freight', 
-                pointDollarRatio: 0.015, 
-                pointsFloor: 0,
-                incentiveRules: []
-            }
+            { id: 's1', name: 'FastLane Logistics', pointDollarRatio: 0.01, pointsFloor: 0, incentiveRules: ["100 pts: Clean inspection"] },
+            { id: 's2', name: 'Global Freight', pointDollarRatio: 0.015, pointsFloor: 0, incentiveRules: [] }
         ],
         applications: [],
         products: [
-            { id: 'p1', name: 'Wireless Headset', description: 'Noise cancelling headset.', pricePoints: 5000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=10', createdAt: '2025-01-01' },
-            { id: 'p2', name: 'Truck GPS', description: 'Advanced routing system.', pricePoints: 15000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=11', createdAt: '2025-01-15' }
+            { id: 'p1', name: 'Wireless Headset', description: 'Noise cancelling.', pricePoints: 5000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=10', createdAt: '2025-01-01' },
+            { id: 'p2', name: 'Truck GPS', description: 'Advanced routing.', pricePoints: 15000, availability: true, imageUrl: 'https://picsum.photos/400/300?random=11', createdAt: '2025-01-15' }
         ],
         transactions: [],
         notifications: [],
@@ -63,27 +42,14 @@ const saveProdDB = (db: ProdDB) => {
     localStorage.setItem(PROD_DB_KEY, JSON.stringify(db));
 };
 
-const headers = {
-    'Content-Type': 'application/json',
-    'x-api-key': AWS_API_CONFIG.apiKey
-};
-
 // --- REDSHIFT ARCHIVING ---
 export const triggerRedshiftArchive = async (): Promise<boolean> => {
     if (getConfig().useMockRedshift) {
-        console.log("[Mock Redshift] Triggering simulated ETL job...");
         await new Promise(resolve => setTimeout(resolve, 2000));
         return true;
     }
-
-    try {
-        console.log("[AWS] Triggering Real AWS Glue ETL job...");
-        await new Promise(resolve => setTimeout(resolve, 2000)); 
-        return true;
-    } catch (e) {
-        console.error("Archive failed", e);
-        return false;
-    }
+    await new Promise(resolve => setTimeout(resolve, 2000)); 
+    return true;
 };
 
 // --- USER MANAGEMENT ---
@@ -235,21 +201,14 @@ export const apiGetCatalog = async (): Promise<Product[]> => {
 };
 
 export const apiValidateCartAvailability = async (cart: CartItem[]): Promise<{ valid: boolean, unavailableItems: string[] }> => {
-    await new Promise(r => setTimeout(r, 200)); // Simulate latency
+    await new Promise(r => setTimeout(r, 200));
     const db = loadProdDB();
     const unavailable: string[] = [];
-
     for (const item of cart) {
         const product = db.products.find(p => p.id === item.id);
-        if (!product || !product.availability) {
-            unavailable.push(item.name);
-        }
+        if (!product || !product.availability) unavailable.push(item.name);
     }
-
-    return { 
-        valid: unavailable.length === 0, 
-        unavailableItems: unavailable 
-    };
+    return { valid: unavailable.length === 0, unavailableItems: unavailable };
 };
 
 // --- APPLICATIONS ---
@@ -270,30 +229,12 @@ export const apiProcessApplication = async (appId: string, status: string): Prom
     const db = loadProdDB();
     const app = db.applications.find(a => a.id === appId);
     if (!app) return false;
-    
     app.status = status as any;
-    
-    // Find User for email - Prefer user profile email if available (e.g. Google Sign in)
     const user = db.users.find(u => u.id === app.userId);
-    let targetEmail = user?.email || app.email;
-
     if (status === 'APPROVED' && user) {
         user.sponsorId = app.sponsorId;
         user.pointsBalance = 0;
     }
-
-    // Add Notification
-    if(!db.notifications) db.notifications = [];
-    db.notifications.push({
-        id: `sys_notif_${Date.now()}`,
-        userId: app.userId,
-        title: `Application ${status}`,
-        message: `Your application status has been updated to ${status}. Alert sent to ${targetEmail}.`,
-        date: new Date().toISOString(),
-        isRead: false,
-        type: 'SYSTEM'
-    });
-
     saveProdDB(db);
     return true;
 };
@@ -302,60 +243,55 @@ export const apiProcessApplication = async (appId: string, status: string): Prom
 export const apiUpdateDriverPoints = async (userId: string, amount: number, reason: string, sponsorId: string, type: 'MANUAL' | 'AUTOMATED' | 'PURCHASE' = 'MANUAL', actorName?: string): Promise<{success: boolean, message: string}> => {
     const db = loadProdDB();
     const user = db.users.find(u => u.id === userId);
-    
     if (!user) return { success: false, message: "User not found" };
-    
     const sponsor = db.sponsors.find(s => s.id === sponsorId);
     if (amount < 0) {
         const current = user.pointsBalance || 0;
         const floor = sponsor?.pointsFloor || 0;
-        if (current + amount < floor) {
-             return { success: false, message: `Cannot deduct points below floor (${floor}).` };
-        }
+        if (current + amount < floor) return { success: false, message: `Deduction below floor (${floor}).` };
     }
-
     user.pointsBalance = (user.pointsBalance || 0) + amount;
-    
-    db.transactions.unshift({
-        id: `tx${Date.now()}`,
-        date: new Date().toISOString().split('T')[0],
-        amount,
-        reason,
-        sponsorName: sponsor?.name || 'Unknown',
-        actorName: actorName,
-        type: type
-    });
-
-    if (user.preferences?.alertsEnabled !== false) {
-        const notif: Notification = {
-            id: `pn${Date.now()}`,
-            userId,
-            title: amount > 0 ? 'Points Awarded' : 'Points Deducted',
-            message: `${Math.abs(amount).toLocaleString()} points have been ${amount > 0 ? 'added to' : 'removed from'} your account. Reason: ${reason}`,
-            date: new Date().toISOString(),
-            isRead: false,
-            type: 'POINT_CHANGE',
-            metadata: { amount, reason, sponsorName: sponsor?.name, actorName }
-        };
-        if(!db.notifications) db.notifications = [];
-        db.notifications.push(notif);
-    }
-
+    db.transactions.unshift({ id: `tx${Date.now()}`, date: new Date().toISOString().split('T')[0], amount, reason, sponsorName: sponsor?.name || 'Unknown', driverId: userId, actorName: actorName, type: type, status: 'COMPLETED' });
     saveProdDB(db);
-    return { success: true, message: "Transaction committed" };
+    return { success: true, message: "Committed" };
 };
 
 export const apiGetTransactions = async (): Promise<PointTransaction[]> => {
     return loadProdDB().transactions;
 };
 
+// --- REFUNDS ---
+export const apiRequestRefund = async (driverId: string, transactionId: string, reason: string): Promise<boolean> => {
+    const db = loadProdDB();
+    const tx = db.transactions.find(t => t.id === transactionId);
+    if (!tx) return false;
+    tx.status = 'REFUND_PENDING';
+    tx.refundReason = reason;
+    saveProdDB(db);
+    return true;
+};
+
+export const apiHandleRefund = async (transactionId: string, approved: boolean, actorName: string): Promise<boolean> => {
+    const db = loadProdDB();
+    const tx = db.transactions.find(t => t.id === transactionId);
+    if (!tx || tx.status !== 'REFUND_PENDING') return false;
+    if (approved) {
+        tx.status = 'REFUNDED';
+        const user = db.users.find(u => u.id === tx.driverId);
+        if (user && user.pointsBalance !== undefined) {
+            user.pointsBalance += Math.abs(tx.amount);
+        }
+    } else {
+        tx.status = 'REFUND_REJECTED';
+    }
+    saveProdDB(db);
+    return true;
+};
+
 // --- MESSAGES ---
 export const apiGetMessages = async (userId: string, otherId: string): Promise<Message[]> => {
     const db = loadProdDB();
-    return (db.messages || []).filter(m => 
-        (m.senderId === userId && m.receiverId === otherId) || 
-        (m.senderId === otherId && m.receiverId === userId)
-    ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    return (db.messages || []).filter(m => (m.senderId === userId && m.receiverId === otherId) || (m.senderId === otherId && m.receiverId === userId)).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 };
 
 export const apiSendMessage = async (msg: Message): Promise<boolean> => {

@@ -17,7 +17,8 @@ export interface User {
   bio?: string; // Personal description for profile
   sponsorId?: string; // Links driver to a sponsor
   pointsBalance?: number; // Only for drivers
-  isActive?: boolean; // Track if account is banned/active
+  isActive?: boolean; // Track if account is banned/active (Admin level)
+  isDropped?: boolean; // Track if driver was dropped by the sponsor (Sponsor level)
   preferences?: {
     alertsEnabled: boolean; // Point Change Alerts
     orderAlertsEnabled?: boolean; // Order Confirmation Alerts
@@ -50,6 +51,7 @@ export interface Message {
   text: string;
   timestamp: string;
   isRead: boolean;
+  metadata?: any; // Used for interactive elements like refund approvals
 }
 
 export interface PendingUser {
@@ -98,9 +100,12 @@ export interface PointTransaction {
   amount: number;
   reason: string;
   sponsorName: string;
-  driverName?: string; // Added to track who received the points
-  actorName?: string; // The specific user who performed the action (e.g. Sponsor Name)
-  type?: 'MANUAL' | 'AUTOMATED' | 'PURCHASE'; 
+  driverName?: string; 
+  driverId?: string; // Added to map back for refunds
+  actorName?: string; 
+  type?: 'MANUAL' | 'AUTOMATED' | 'PURCHASE';
+  status?: 'COMPLETED' | 'REFUND_PENDING' | 'REFUNDED' | 'REFUND_REJECTED'; // Tracking refund state
+  refundReason?: string;
 }
 
 export interface AboutData {

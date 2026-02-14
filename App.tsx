@@ -12,6 +12,7 @@ import { Chat } from './pages/Chat';
 import { SponsorApplications } from './pages/SponsorApplications';
 import { SponsorPoints } from './pages/SponsorPoints';
 import { SponsorCatalog } from './pages/SponsorCatalog';
+import { SponsorDrivers } from './pages/SponsorDrivers';
 import { AdminSponsors } from './pages/AdminSponsors';
 import { AdminUserManagement } from './pages/AdminUserManagement';
 import { AdminSettings } from './pages/AdminSettings';
@@ -289,6 +290,12 @@ const App: React.FC = () => {
             <Route path="/reports" element={
               <ProtectedRoute user={user}>
                 {(user?.role === UserRole.ADMIN || user?.role === UserRole.SPONSOR) ? <Reports /> : <Navigate to="/dashboard" replace />}
+              </ProtectedRoute>
+            } />
+
+            <Route path="/sponsor/drivers" element={
+              <ProtectedRoute user={user}>
+                {user?.role === UserRole.SPONSOR ? <SponsorDrivers /> : <Navigate to="/dashboard" replace />}
               </ProtectedRoute>
             } />
 
